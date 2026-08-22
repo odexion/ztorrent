@@ -44,6 +44,19 @@ npm run dist:all          # all three
 Windows and Linux icons are generated from `build/icon.png`, so `make-icns.sh` (which
 needs `sips` and `iconutil`) is only required for the macOS build.
 
+### Releases
+
+CI builds all three platforms on every push to `main` and attaches the installers to the
+run as artifacts. Pushing a `v*` tag additionally publishes them as a GitHub Release:
+
+```bash
+npm version patch     # or minor / major — writes package.json and tags
+git push --follow-tags
+```
+
+That produces `.dmg` (arm64 + x64), `.exe` NSIS installers (x64 + arm64), and
+`.AppImage` + `.deb` (x64 + arm64). Everything is unsigned.
+
 The build sets `npmRebuild: false`. Every native dependency in the tree —
 `bufferutil`, `utf-8-validate`, `utp-native`, `node-datachannel`,
 `fs-native-extensions` — ships prebuilt binaries for each platform that import only

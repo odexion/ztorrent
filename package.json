@@ -5,7 +5,10 @@
   "description": "A BitTorrent client for macOS, Windows and Linux",
   "type": "module",
   "main": "electron/main.js",
-  "author": "zaf4",
+  "author": {
+    "name": "zaf4",
+    "email": "zafermolbio@gmail.com"
+  },
   "license": "MIT",
   "private": true,
   "scripts": {
@@ -152,6 +155,7 @@
           "Keywords": "torrent;bittorrent;p2p;download"
         }
       }
-    }
+    },
+    "artifactName": "${name}-${version}-${os}-${arch}.${ext}"
   }
 }
