@@ -1,0 +1,157 @@
+{
+  "name": "ztorrent",
+  "productName": "ztorrent",
+  "version": "1.0.0",
+  "description": "A BitTorrent client for macOS, Windows and Linux",
+  "type": "module",
+  "main": "electron/main.js",
+  "author": "zaf4",
+  "license": "MIT",
+  "private": true,
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron . --dev",
+    "dist": "electron-builder --mac",
+    "pack": "electron-builder --dir",
+    "dist:win": "electron-builder --win",
+    "dist:linux": "electron-builder --linux",
+    "dist:all": "electron-builder -mwl"
+  },
+  "dependencies": {
+    "create-torrent": "^6.1.3",
+    "parse-torrent": "^11.0.24",
+    "webtorrent": "^3.0.21"
+  },
+  "devDependencies": {
+    "electron": "^43.4.1",
+    "electron-builder": "^26.15.3"
+  },
+  "build": {
+    "appId": "dev.zaf4.ztorrent",
+    "productName": "ztorrent",
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "files": [
+      "electron/**/*",
+      "renderer/**/*",
+      "node_modules/**/*",
+      "package.json",
+      "!**/prebuilds/{android,ios,freebsd,openbsd,sunos}-*/**",
+      "!**/node_modules/**/{test,tests,__tests__,spec,example,examples,doc,docs,coverage}/**",
+      "!**/node_modules/**/{.github,.vscode,.idea,.nyc_output}/**",
+      "!**/node_modules/**/*.{md,markdown,mkd,d.ts,map,tsbuildinfo}",
+      "!**/node_modules/**/{LICENSE,LICENCE,AUTHORS,CHANGELOG,HISTORY,NOTICE}*",
+      "!**/node_modules/**/{.eslintrc,.eslintrc.*,.prettierrc,.editorconfig,.npmignore,.travis.yml,tsconfig.json,*.tgz}",
+      "!**/node_modules/.bin/**"
+    ],
+    "mac": {
+      "category": "public.app-category.utilities",
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "arm64",
+            "x64"
+          ]
+        }
+      ],
+      "extendInfo": {
+        "CFBundleDocumentTypes": [
+          {
+            "CFBundleTypeName": "BitTorrent Document",
+            "CFBundleTypeRole": "Viewer",
+            "LSHandlerRank": "Owner",
+            "LSItemContentTypes": [
+              "org.bittorrent.torrent"
+            ],
+            "CFBundleTypeExtensions": [
+              "torrent"
+            ]
+          }
+        ],
+        "CFBundleURLTypes": [
+          {
+            "CFBundleURLName": "Magnet URI",
+            "CFBundleURLSchemes": [
+              "magnet"
+            ]
+          }
+        ]
+      }
+    },
+    "npmRebuild": false,
+    "buildDependenciesFromSource": false,
+    "asarUnpack": [
+      "**/*.node",
+      "**/node_modules/{bufferutil,utf-8-validate,utp-native}/**"
+    ],
+    "extraResources": [
+      {
+        "from": "sample-torrents",
+        "to": "sample-torrents"
+      }
+    ],
+    "fileAssociations": [
+      {
+        "ext": "torrent",
+        "name": "BitTorrent Document",
+        "description": "BitTorrent metainfo file",
+        "mimeType": "application/x-bittorrent",
+        "role": "Viewer"
+      }
+    ],
+    "protocols": [
+      {
+        "name": "Magnet URI",
+        "schemes": [
+          "magnet"
+        ]
+      }
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        }
+      ],
+      "icon": "build/icon.png"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "perMachine": false
+    },
+    "linux": {
+      "target": [
+        {
+          "target": "AppImage",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        },
+        {
+          "target": "deb",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        }
+      ],
+      "category": "Network",
+      "icon": "build/icon.png",
+      "synopsis": "A BitTorrent client",
+      "desktop": {
+        "entry": {
+          "Keywords": "torrent;bittorrent;p2p;download"
+        }
+      }
+    }
+  }
+}

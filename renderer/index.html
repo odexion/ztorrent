@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en" data-theme="classic">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'">
+  <title>ztorrent</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div id="app">
+
+    <!-- ───────────────────────────── toolbar ───────────────────────────── -->
+    <div id="toolbar">
+      <div class="tb-btn" data-act="add-file"></div>
+      <div class="tb-btn" data-act="add-url"></div>
+      <div class="tb-btn" data-act="create"></div>
+      <div class="tb-sep"></div>
+      <div class="tb-btn" data-act="remove"></div>
+      <div class="tb-sep"></div>
+      <div class="tb-btn" data-act="start"></div>
+      <div class="tb-btn" data-act="pause"></div>
+      <div class="tb-btn" data-act="stop"></div>
+      <div class="tb-sep"></div>
+      <div class="tb-btn" data-act="queue-up"></div>
+      <div class="tb-btn" data-act="queue-down"></div>
+      <div class="tb-sep"></div>
+      <div class="tb-btn" data-act="alt-speed"></div>
+      <div class="tb-btn" data-act="preferences"></div>
+      <div class="tb-spacer"></div>
+      <div id="search-wrap">
+        <span id="search-icon"></span>
+        <input id="search" type="search" placeholder="Filter torrents" spellcheck="false">
+      </div>
+    </div>
+
+    <!-- ─────────────────────────────── body ────────────────────────────── -->
+    <div id="body">
+      <div id="sidebar"></div>
+      <div id="vsplit"></div>
+
+      <div id="main">
+        <div id="list-pane">
+          <div class="grid-head" id="list-head"></div>
+          <div class="grid-body" id="list-body" tabindex="0"></div>
+        </div>
+
+        <div id="hsplit"></div>
+
+        <div id="detail">
+          <div class="tabstrip" id="tabstrip"></div>
+          <div class="tabpanes">
+            <div class="tabpane active" id="pane-general"></div>
+            <div class="tabpane" id="pane-trackers"></div>
+            <div class="tabpane" id="pane-peers"></div>
+            <div class="tabpane" id="pane-pieces"></div>
+            <div class="tabpane" id="pane-files"></div>
+            <div class="tabpane" id="pane-speed"></div>
+            <div class="tabpane" id="pane-logger"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ────────────────────────────── status ───────────────────────────── -->
+    <div id="statusbar">
+      <div class="sb" id="sb-dht"><span class="dot yellow"></span><span>DHT: starting</span></div>
+      <div class="sb" id="sb-count"><span class="k">Torrents:</span><span>0</span></div>
+      <div class="sb grow"></div>
+      <div class="sb clickable" id="sb-alt" title="Toggle alternate speed limits"></div>
+      <div class="sb" id="sb-down"></div>
+      <div class="sb" id="sb-up"></div>
+    </div>
+  </div>
+
+  <div id="modal-root"></div>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>
