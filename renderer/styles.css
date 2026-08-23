@@ -38,12 +38,14 @@
 
   /* Progress: mid-tone fills carrying dark text, as µTorrent/BitTorrent do. */
   --bar-track:        rgba(0, 0, 0, .07);
-  --bar:              #3a78b8;
-  --bar-seed:         #4d8532;
+  --bar:              #90e0ef;
+  --bar-seed:         #00ff9c;
   --bar-idle:         #c2c6cc;
   --bar-err:          #c8524a;
   --bar-label:        #5f666e;
-  --bar-label-on:     #ffffff;
+  /* These fills are light enough that white text vanishes on them (1.4:1);
+     dark ink clears 10:1 on both. */
+  --bar-label-on:     #10242c;
   --piece-partial:    #e8a317;
 
   /* Semantics */
@@ -93,12 +95,12 @@
   --sel-blur:         rgba(255, 255, 255, .07);
 
   --bar-track:        rgba(255, 255, 255, .10);
-  --bar:              #3a72ad;
-  --bar-seed:         #478230;
+  --bar:              #90e0ef;
+  --bar-seed:         #00ff9c;
   --bar-idle:         #4a4e55;
   --bar-err:          #a8453f;
   --bar-label:        var(--ink-dim);
-  --bar-label-on:     #ffffff;
+  --bar-label-on:     #10242c;
   --piece-partial:    #e0aa3c;
 
   --ok:               #3fc38a;
@@ -493,8 +495,10 @@ html, body {
   color: var(--bar-label-on);
   clip-path: inset(0 calc(100% - var(--p, 0%)) 0 0);
 }
-/* The idle fill is a neutral grey in both themes; plain ink reads best on it. */
+/* The idle and error fills are darker than the blue/green, so they keep their
+   own label colours rather than the shared dark ink. */
 .pbar.idle > b.on { color: var(--ink); }
+.pbar.err  > b.on { color: #ffffff; }
 
 .pct {
   flex-shrink: 0;
