@@ -50,7 +50,7 @@ const P = {
     <circle cx="9" cy="12" r="2"/>
     <circle cx="15" cy="18" r="2"/>`,
 
-  search: `<circle cx="11" cy="11" r="6.5"/><path d="m16 16 4.5 4.5"/>`,
+  search: `<circle cx="10.5" cy="10.5" r="6.5"/><path d="m15.3 15.3 5.2 5.2"/>`,
 
   /* ---- sidebar ---- */
   torrents: `

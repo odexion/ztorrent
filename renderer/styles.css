@@ -189,7 +189,11 @@ html, body {
 #search-wrap svg {
   position: absolute;
   left: 9px;
-  width: 14px; height: 14px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 15px; height: 15px;
+  /* scaled so the rendered stroke matches the 18px toolbar glyphs */
+  stroke-width: 2.1;
   color: var(--ink-faint);
   pointer-events: none;
 }
