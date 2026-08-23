@@ -132,7 +132,7 @@ load_release() {
   fi
 
   RELEASE=$(fetch "$api") ||
-    die "could not reach the GitHub API for ${REPO}${ZTORRENT_VERSION:+ at $ZTORRENT_VERSION} — is the release published?"
+    die "could not reach the GitHub API for ${REPO}${ZTORRENT_VERSION:+ at $ZTORRENT_VERSION} - is the release published?"
 
   TAG=$(printf '%s\n' "$RELEASE" |
     grep -o '"tag_name"[[:space:]]*:[[:space:]]*"[^"]*"' |
@@ -141,7 +141,7 @@ load_release() {
 }
 
 # The artifact name carries the version (ztorrent-0.1.0-mac-arm64.dmg), so the
-# download URL cannot be guessed from the tag alone — read it off the release.
+# download URL cannot be guessed from the tag alone - read it off the release.
 # Match on the end of the name, or a .dmg suffix also matches its .dmg.blockmap.
 asset_url() { # <suffix> -> url on stdout
   printf '%s\n' "$RELEASE" |
@@ -181,7 +181,7 @@ install_mac() {
   mkdir -p "$dest"
   app="$dest/ztorrent.app"
 
-  say "Downloading ztorrent $TAG for macOS ${ARCH}…"
+  say "Downloading ztorrent $TAG for macOS ${ARCH}..."
   download "$url" "$WORK/ztorrent.dmg"
 
   MNT=$(mktemp -d "${TMPDIR:-/tmp}/ztorrent-mnt.XXXXXX")
@@ -216,7 +216,7 @@ install_linux() {
   mkdir -p "$PREFIX"
   bin="$PREFIX/ztorrent"
 
-  say "Downloading ztorrent $TAG for Linux ${ARCH}…"
+  say "Downloading ztorrent $TAG for Linux ${ARCH}..."
   download "$url" "$WORK/ztorrent.AppImage"
   chmod +x "$WORK/ztorrent.AppImage"
   mv -f "$WORK/ztorrent.AppImage" "$bin"
@@ -237,7 +237,7 @@ install_linux() {
   # need libfuse2. Say so here rather than letting the first launch fail.
   if ! ldconfig -p 2>/dev/null | grep -q 'libfuse\.so\.2'; then
     warn ""
-    warn "libfuse2 was not found — AppImages need it. On Debian/Ubuntu:"
+    warn "libfuse2 was not found - AppImages need it. On Debian/Ubuntu:"
     warn "    sudo apt install libfuse2"
     warn "Or run it extracted: ztorrent --appimage-extract-and-run"
   fi
