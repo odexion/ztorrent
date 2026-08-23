@@ -204,8 +204,8 @@ renderer/
   icons.js      the inline SVG icon set
   util.js       byte, speed, ETA and date formatting
 scripts/
-  make-icon.mjs generates build/icon.png with no image tooling
-  make-icns.sh  turns that into build/icon.icns via sips + iconutil
+  make-icon.mjs generates build/icon.png and build/logo.svg, no image tooling
+  make-icns.sh  turns the PNG into build/icon.icns via sips + iconutil
 ```
 
 The renderer runs sandboxed with context isolation and no Node access; it talks to the

@@ -124,10 +124,15 @@ const P = {
     <path d="M3.5 4.5h4v8a4.5 4.5 0 0 0 9 0v-8h4v8a8.5 8.5 0 0 1-17 0z"/>
     <path d="M3.5 8.5h4M16.5 8.5h4"/>`,
 
-  /* The app mark: the same Z that the icon carries. */
+  /* The app mark, in the same proportions build/logo.svg and the icon carry:
+     two bars with three lighter steps walking the diagonal between them. The
+     per-path widths override the set's shared stroke weight on purpose. */
   logo: `
-    <rect x="2.5" y="2.5" width="19" height="19" rx="5.5"/>
-    <path d="M8 8.4h8L8 15.6h8"/>`
+    <path d="M5.8 5.2h12.4" stroke-width="3.4"/>
+    <path d="M12.1 8.95h4" stroke-width="2"/>
+    <path d="M10 12h4" stroke-width="2"/>
+    <path d="M7.9 15.05h4" stroke-width="2"/>
+    <path d="M5.8 18.8h12.4" stroke-width="3.4"/>`
 }
 
 export function icon (name, size, cls) {

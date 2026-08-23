@@ -1,9 +1,12 @@
 /**
  * Renders the ztorrent app icon to PNG with no external image tooling.
  *
- * The mark is a geometric Z whose diagonal doubles as the downward stroke of a
- * download: it names the app and says what it does in one shape, and it stays
- * legible at 16px in a dock or task bar.
+ * The mark is a Z in five horizontal lines: a long bar, three short steps
+ * walking down the diagonal, a long bar. The steps are drawn lighter than the
+ * bars, so the bars carry the letter and the steps read as what is still
+ * arriving. Flat ink, no gradient. It is drawn in the 24-unit grid the line
+ * icons in renderer/icons.js use, so the dock icon and the toolbar are one
+ * family.
  *
  *   node scripts/make-icon.mjs            # writes build/icon.png (1024²)
  *   ./scripts/make-icns.sh                # turns that into build/icon.icns
@@ -17,58 +20,85 @@ const SIZE = 1024
 const SS = 3                       // supersampling factor for anti-aliasing
 const BOX = 824                    // macOS content square inside the 1024 canvas
 const RADIUS = 185
-const OFF = (SIZE - BOX) / 2
 
-// The glyph, in the 16-unit space the UI icons are drawn in.
-const UNIT = BOX / 16
-const STROKE = 1.85 * UNIT / 2
-const pt = (x, y) => [OFF + x * UNIT, OFF + y * UNIT]
-// A Z drawn as three strokes: top bar, diagonal, bottom bar. Round caps and
-// joins fall out of the distance field for free, matching the round-capped
-// line icons used throughout the UI.
-const SEGMENTS = [
-  [pt(4.45, 4.55), pt(11.55, 4.55)],
-  [pt(11.55, 4.55), pt(4.45, 11.45)],
-  [pt(4.45, 11.45), pt(11.55, 11.45)]
-]
+// ---- the mark, in the 24-unit grid the UI icons are drawn in ---------------
 
-const clamp01 = v => (v < 0 ? 0 : v > 1 ? 1 : v)
+const LINES = 5                    // total lines: two bars plus the steps between
+const BAR_H = 3.4                  // the two long bars' thickness
+const STEP_H = 2.0                 // the steps run lighter than the bars
+const BAR = [5.8, 18.2]            // the long top and bottom bars, left to right
+const STEP = 4.0                   // length of the lines that step down the diagonal
+const GRID_H = 17                  // the mark's ink height, top edge to bottom edge
+const TOP_Y = 3.5                  // the mark's top edge
+const MARK_H = 0.56                // mark height as a fraction of the content box
 
-/** Signed-ish distance to a rounded rectangle: <= 0 means inside. */
-function roundedRectDist (x, y) {
-  const cx = SIZE / 2
-  const cy = SIZE / 2
-  const hw = BOX / 2 - RADIUS
-  const hh = BOX / 2 - RADIUS
-  const dx = Math.max(Math.abs(x - cx) - hw, 0)
-  const dy = Math.max(Math.abs(y - cy) - hh, 0)
-  return Math.hypot(dx, dy) - RADIUS
+const TILE = [0x1f, 0x22, 0x26]    // flat graphite — no gradient
+const INK = [0xff, 0xff, 0xff]
+// A hairline lift along the tile edge. Near-black would otherwise lose its
+// silhouette against a dark desktop; this is the whole of the relief, and it
+// vanishes by the time the icon is 16px.
+const RIM = BOX * 0.0097
+const RIM_LIFT = 26
+
+const isBar = i => i === 0 || i === LINES - 1
+const THICK = Array.from({ length: LINES }, (_, i) => (isBar(i) ? BAR_H : STEP_H))
+
+// The lines are laid out from the top edge down; whatever height the strokes
+// leave over is split evenly into the gaps between them.
+const LINE_GAP = (GRID_H - THICK.reduce((a, b) => a + b, 0)) / (LINES - 1)
+
+/**
+ * The lines as [x1, y, x2, y, thickness] in grid units. The outer two are the
+ * Z's bars; the ones between are short steps walking down the diagonal.
+ *
+ * Every gap in the descent is the same: bar to first step, step to step, and
+ * last step to bar all move left by SHIFT. That makes SHIFT a consequence of
+ * the step length rather than a free choice — the equal gaps have to divide
+ * what the bars leave over — so shortening STEP widens the stagger, and
+ * dropping a line widens it again.
+ */
+const SHIFT = (BAR[1] - BAR[0] - STEP) / (LINES - 1)
+const PIECES = (() => {
+  let top = TOP_Y
+  return THICK.map((h, i) => {
+    const y = top + h / 2
+    top += h + LINE_GAP
+    if (isBar(i)) return [BAR[0], y, BAR[1], y, h]
+    const right = BAR[1] - i * SHIFT
+    return [right - STEP, y, right, y, h]
+  })
+})()
+const K = (BOX * MARK_H) / GRID_H          // grid units to canvas pixels
+const to = v => SIZE / 2 + (v - 12) * K    // grid coordinate to canvas pixel
+
+/** Signed distance to an axis-aligned rounded rect: <= 0 means inside. */
+function roundRect (x, y, cx, cy, hw, hh, r) {
+  const dx = Math.abs(x - cx) - (hw - r)
+  const dy = Math.abs(y - cy) - (hh - r)
+  return Math.hypot(Math.max(dx, 0), Math.max(dy, 0)) + Math.min(Math.max(dx, dy), 0) - r
 }
 
-function segDist (px, py, [ax, ay], [bx, by]) {
+const tileDist = (x, y) => roundRect(x, y, SIZE / 2, SIZE / 2, BOX / 2, BOX / 2, RADIUS)
+
+const PIECES_PX = PIECES.map(([x1, y1, x2, y2, h]) => [to(x1), to(y1), to(x2), to(y2), (h / 2) * K])
+
+/** Distance from a point to a segment. */
+function segDist (px, py, ax, ay, bx, by) {
   const vx = bx - ax
   const vy = by - ay
-  const wx = px - ax
-  const wy = py - ay
   const len2 = vx * vx + vy * vy
-  const t = len2 ? clamp01((wx * vx + wy * vy) / len2) : 0
+  let t = len2 ? ((px - ax) * vx + (py - ay) * vy) / len2 : 0
+  t = t < 0 ? 0 : t > 1 ? 1 : t
   return Math.hypot(px - (ax + t * vx), py - (ay + t * vy))
 }
 
-const glyphDist = (x, y) => Math.min(...SEGMENTS.map(s => segDist(x, y, s[0], s[1])))
-
-
-
-// Vertical gradient in the family of the UI accent, deepened so the white
-// mark carries plenty of contrast at every size.
-const TOP = [0x6a, 0x9b, 0xff]
-const MID = [0x3b, 0x6f, 0xe8]
-const BOT = [0x24, 0x3d, 0xa8]
-function gradient (t) {
-  const [a, b, u] = t < 0.55
-    ? [TOP, MID, t / 0.55]
-    : [MID, BOT, (t - 0.55) / 0.45]
-  return [0, 1, 2].map(i => Math.round(a[i] + (b[i] - a[i]) * u))
+/** <= 0 inside the mark: the union of the lines, each a round-capped bar. */
+function markDist (x, y) {
+  let d = Infinity
+  for (const [ax, ay, bx, by, half] of PIECES_PX) {
+    d = Math.min(d, segDist(x, y, ax, ay, bx, by) - half)
+  }
+  return d
 }
 
 const px = new Uint8Array(SIZE * SIZE * 4)
@@ -80,16 +110,13 @@ for (let y = 0; y < SIZE; y++) {
       for (let sx = 0; sx < SS; sx++) {
         const fx = x + (sx + 0.5) / SS
         const fy = y + (sy + 0.5) / SS
-        if (roundedRectDist(fx, fy) > 0) continue
-
-        const [r, g, b] = gradient((fy - OFF) / BOX)
-        // A soft inner top highlight, then the white glyph on top.
-        const lift = Math.max(0, 1 - (fy - OFF) / (BOX * 0.35)) * 28
-        const onGlyph = glyphDist(fx, fy) <= STROKE
-        if (onGlyph) { rs += 255; gs += 255; bs += 255 } else {
-          rs += Math.min(255, r + lift); gs += Math.min(255, g + lift); bs += Math.min(255, b + lift)
-        }
-        as += 255
+        const td = tileDist(fx, fy)
+        if (td > 0) continue
+        const edge = td > -RIM
+        const [r, g, b] = markDist(fx, fy) <= 0
+          ? INK
+          : edge ? TILE.map(v => Math.min(255, v + RIM_LIFT)) : TILE
+        rs += r; gs += g; bs += b; as += 255
       }
     }
     const n = SS * SS
@@ -149,7 +176,24 @@ const png = Buffer.concat([
   chunk('IEND', Buffer.alloc(0))
 ])
 
-const out = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'build', 'icon.png')
-fs.mkdirSync(path.dirname(out), { recursive: true })
+const BUILD = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'build')
+fs.mkdirSync(BUILD, { recursive: true })
+
+const out = path.join(BUILD, 'icon.png')
 fs.writeFileSync(out, png)
 console.log(`wrote ${out} (${SIZE}x${SIZE}, ${(png.length / 1024).toFixed(1)} kB)`)
+
+// ---- the same mark as vector, for READMEs and anywhere else it is needed ---
+
+const round = v => +v.toFixed(2)
+const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24"
+     fill="none" stroke="currentColor" stroke-linecap="round">
+  <title>ztorrent</title>
+${PIECES.map(([x1, y1, x2, y2, h]) =>
+  `  <path d="M${round(x1)} ${round(y1)}L${round(x2)} ${round(y2)}" stroke-width="${round(h)}"/>`
+).join('\n')}
+</svg>
+`
+const svgOut = path.join(BUILD, 'logo.svg')
+fs.writeFileSync(svgOut, svg)
+console.log(`wrote ${svgOut}`)
