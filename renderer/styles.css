@@ -38,13 +38,13 @@
 
   /* Progress: mid-tone fills carrying dark text, as µTorrent/BitTorrent do. */
   --bar-track:        rgba(0, 0, 0, .07);
-  --bar:              #90e0ef;
-  --bar-seed:         #00ff9c;
+  --bar:              #87c1f3;
+  --bar-seed:         #aed47c;
   --bar-idle:         #c2c6cc;
   --bar-err:          #c8524a;
   --bar-label:        #5f666e;
-  /* These fills are light enough that white text vanishes on them (1.4:1);
-     dark ink clears 10:1 on both. */
+  /* These fills are light enough that white text vanishes on them (under 2:1);
+     dark ink clears 8:1 on both. */
   --bar-label-on:     #10242c;
   --piece-partial:    #e8a317;
 
@@ -95,8 +95,8 @@
   --sel-blur:         rgba(255, 255, 255, .07);
 
   --bar-track:        rgba(255, 255, 255, .10);
-  --bar:              #90e0ef;
-  --bar-seed:         #00ff9c;
+  --bar:              #87c1f3;
+  --bar-seed:         #aed47c;
   --bar-idle:         #4a4e55;
   --bar-err:          #a8453f;
   --bar-label:        var(--ink-dim);
