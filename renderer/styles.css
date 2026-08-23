@@ -483,7 +483,7 @@ html, body {
   align-items: center;
   justify-content: center;
   font-size: 11px;
-  font-weight: 400;
+  font-weight: 600;
   color: var(--bar-label);
   white-space: nowrap;
   overflow: hidden;
