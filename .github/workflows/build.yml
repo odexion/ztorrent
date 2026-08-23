@@ -85,12 +85,24 @@ jobs:
           ls -lh release
           test -n "$(ls -A release)" || { echo 'no installers found'; exit 1; }
 
+      # Upload into an existing release rather than failing on it. A tag can
+      # already have a release before this job runs — one made by hand, or by
+      # an earlier attempt at this tag — and `gh release create` refuses that,
+      # which strands the installers as run artifacts.
       - name: Publish release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release create "$GITHUB_REF_NAME" \
-            --repo "$GITHUB_REPOSITORY" \
-            --title "$GITHUB_REF_NAME" \
-            --generate-notes \
-            release/*
+          if gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "release $GITHUB_REF_NAME exists — uploading into it"
+            gh release upload "$GITHUB_REF_NAME" \
+              --repo "$GITHUB_REPOSITORY" \
+              --clobber \
+              release/*
+          else
+            gh release create "$GITHUB_REF_NAME" \
+              --repo "$GITHUB_REPOSITORY" \
+              --title "$GITHUB_REF_NAME" \
+              --generate-notes \
+              release/*
+          fi
