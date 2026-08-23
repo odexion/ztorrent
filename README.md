@@ -1,272 +1,97 @@
 # ztorrent
 
-A cross-platform BitTorrent client for macOS, Windows and Linux. Flat surfaces, system
-type, a single accent colour, and a tabbed detail pane underneath the transfer list. The
-Status column carries its own progress bar, µTorrent-style.
+A free BitTorrent client for macOS, Windows and Linux. Open a torrent, watch it
+download, find your files in your Downloads folder.
 
-It speaks real BitTorrent: TCP and µTP peers, DHT, PEX, local peer discovery, HTTP and UDP
-trackers, magnet links, and HTTP web seeds. Drop a `.torrent` on it and it downloads.
+## Install
 
-```
-┌ native menu bar ───────────────────────────────────────────────┐
-├ Add · Add-URL · Create │ Remove │ Start · Pause · Stop │ ▲ ▼ │ …│
-├──────────┬─────────────────────────────────────────────────────┤
-│ Torrents │ #  Name        Size  ▓▓▓▓ Downloading 62%  Seeds ETA│
-│  ├ Down… │────────────────── splitter ───────────────────────  │
-│  ├ Seed… │ General│Trackers│Peers│Pieces│Files│Speed│Logger     │
-│  └ Label │ …detail pane…                                       │
-├──────────┴─────────────────────────────────────────────────────┤
-│ ⬤ DHT: 142 nodes │ Torrents: 3 │  D: 21.7 MB/s   U: 68 kB/s     │
-└────────────────────────────────────────────────────────────────┘
-```
+**macOS** — download for [Apple silicon][mac-arm] or [Intel][mac-x64].
 
-## Installing
+Open the downloaded file and drag ztorrent into Applications. (Not sure which one?
+Apple menu ▸ About This Mac. "Apple M1/M2/M3" means Apple silicon.)
 
-macOS and Linux, from the latest release:
+**Windows** — [download the installer][win].
+
+Run it and follow the prompts.
+
+**Linux** — download the [AppImage][linux-appimage], or a [.deb][linux-deb] for Debian
+and Ubuntu.
+
+Make the AppImage executable (right-click ▸ Properties ▸ Permissions) and double-click it.
+
+Prefer the terminal? On macOS and Linux this does the whole thing for you:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/odexion/ztorrent/main/scripts/install.sh | sh
 ```
 
-On macOS that copies `ztorrent.app` into `/Applications` — or `~/Applications` when
-`/Applications` is not writable — and strips the quarantine flag, since the builds are
-unsigned. On Linux it drops the AppImage into `~/.local/bin/ztorrent` and writes a
-`.desktop` entry so it shows up in the launcher and handles `.torrent` files and
-`magnet:` links. Nothing needs sudo and nothing is written outside your home directory
-unless `/Applications` is already writable. x64 and arm64 are both covered; on Apple
-silicon a Rosetta shell still gets the native arm64 build.
+All downloads are on the [releases page](https://github.com/odexion/ztorrent/releases).
 
-Read it before you pipe it to a shell — [`scripts/install.sh`][install] is a single file of
-POSIX sh with no dependencies beyond `curl` or `wget`. It takes a few environment variables:
+### First time you open it
 
-| | |
-|---|---|
-| `ZTORRENT_VERSION` | Tag to install, e.g. `v0.1.0` (default: the latest release) |
-| `ZTORRENT_REPO` | `owner/name` to install from (default: `odexion/ztorrent`) |
-| `ZTORRENT_PREFIX` | Linux: directory for the executable (default: `~/.local/bin`) |
-| `GITHUB_TOKEN` | Optional, only to lift the anonymous API rate limit |
+ztorrent isn't signed with a paid developer certificate, so your computer will warn
+you that it's from an unidentified developer. This is expected.
 
-```bash
-curl -fsSL .../install.sh | ZTORRENT_VERSION=v0.1.0 sh
-```
+- **macOS** — right-click the app and choose **Open**, then **Open** again. Only needed once.
+- **Windows** — click **More info**, then **Run anyway**.
 
-Re-running it installs over the top, so that is also how you upgrade. To uninstall,
-delete `ztorrent.app` on macOS, or `~/.local/bin/ztorrent`,
-`~/.local/share/applications/ztorrent.desktop` and `~/.local/share/ztorrent/` on Linux.
+## Using it
 
-Windows has no script — grab the `.exe` installer from the
-[releases page](https://github.com/odexion/ztorrent/releases). A `.deb` is published
-there too if you would rather have that than the AppImage.
+**Add a torrent** any of these ways:
 
-[install]: scripts/install.sh
+- Drag a `.torrent` file onto the window
+- **File ▸ Add Torrent…** and pick a file
+- Copy a magnet link, then **File ▸ Add from URL…**
+- Double-click a `.torrent` file anywhere on your computer
 
-## Running it from source
+Then pick where to save it and click OK. That's it — the download starts, and the
+bar in the Status column fills up as it goes.
 
-```bash
-npm install
-npm start          # or: npm run dev   (opens devtools)
-```
+Files land in your Downloads folder unless you choose somewhere else. Downloads
+resume by themselves when you reopen the app, so it's safe to quit partway through.
 
-Then **File ▸ Add Torrent…** (⌘O on macOS, Ctrl+O elsewhere) and pick something from
-`sample-torrents/`.
-
-### Building
-
-```bash
-./scripts/make-icns.sh    # build/icon.icns from build/icon.png (macOS only)
-npm run pack              # unpacked app in dist/
-npm run dist              # macOS .dmg, arm64 + x64
-npm run dist:win          # Windows NSIS installer, x64 + arm64
-npm run dist:linux        # Linux AppImage + .deb, x64 + arm64
-npm run dist:all          # all three
-```
-
-Windows and Linux icons are generated from `build/icon.png`, so `make-icns.sh` (which
-needs `sips` and `iconutil`) is only required for the macOS build.
-
-### Releases
-
-CI builds all three platforms on every push to `main` and attaches the installers to the
-run as artifacts. Pushing a `v*` tag additionally publishes them as a GitHub Release:
-
-```bash
-npm version patch     # or minor / major — writes package.json and tags
-git push --follow-tags
-```
-
-That produces `.dmg` (arm64 + x64), `.exe` NSIS installers (x64 + arm64), and
-`.AppImage` + `.deb` (x64 + arm64). Everything is unsigned.
-
-The build sets `npmRebuild: false`. Every native dependency in the tree —
-`bufferutil`, `utf-8-validate`, `utp-native`, `node-datachannel`,
-`fs-native-extensions` — ships prebuilt binaries for each platform that import only
-`napi_*` symbols. N-API is ABI-stable across Node and Electron, so those binaries
-load in Electron unchanged and `@electron/rebuild` has nothing to do. Leaving it on
-just makes node-gyp download Electron headers, which is the one step that needs the
-network and the one step that fails behind a slow or filtered connection.
-
-Builds are unsigned — there is no Developer ID here, so electron-builder skips code
-signing. A locally built `.app` runs fine; one that has been downloaded will need
-`xattr -dr com.apple.quarantine /Applications/ztorrent.app` or a right-click ▸ Open.
-Windows SmartScreen will likewise warn about the unsigned installer.
-
-## Sample torrents
-
-`sample-torrents/` ships four well-seeded, freely distributable torrents so the app can be
-exercised immediately:
-
-| File | Size | Notes |
-|---|---|---|
-| `debian-13.6.0-amd64-netinst.iso.torrent` | 755 MB | Huge swarm (100+ seeds), HTTP tracker + two web seeds. Best for watching real throughput. |
-| `sintel.torrent` | 123 MB | Blender open movie, 11 files. Good for exercising the Files tab and per-file priorities. |
-| `big-buck-bunny.torrent` | 264 MB | Blender open movie. |
-| `tears-of-steel.torrent` | 571 MB | Blender open movie. |
-
-## What's in the UI
-
-**Toolbar** — Add Torrent, Add from URL, Create New Torrent, Remove, Start, Pause, Stop,
-move up/down the queue, alternate speed limits, Preferences, and a live filter box.
-
-**Sidebar** — Torrents / Downloading / Seeding / Completed / Active / Inactive with live
-counts, plus a Labels tree.
-
-**Transfer list** — 18 available columns (`#`, Name, Size, Done, Status, Seeds, Peers, Down
-Speed, Up Speed, ETA, Downloaded, Uploaded, Ratio, Availability, Label, Added On, Completed
-On, Save Path). Click a header to sort, drag its right edge to resize, right-click the
-header to choose which columns show. Widths and choices persist.
-
-**Detail tabs**
-
-- **General** — transfer stats on the left, torrent metadata (hash, pieces, comment, creator,
-  private flag) on the right.
-- **Trackers** — every announce URL plus the pseudo-entries µTorrent shows for DHT, PEX and
-  LSD, with live seed/leech counts scraped from announce responses and the next update time.
-  Right-click to add a tracker or force an announce.
-- **Peers** — address, connection type (TCP/µTP/WebRTC/web seed), flags, client name,
-  their completion, and per-peer transfer rates and totals.
-- **Pieces** — the full piece map, one cell per piece: green have, amber in flight, grey missing.
-- **Files** — per-file size, progress and priority. Right-click for High / Normal / Don't
-  Download, or to open the file or reveal it in Finder.
-- **Speed** — a 150-second download/upload graph for the selected torrent (or the whole
-  session when nothing is selected).
-- **Logger** — timestamped engine events.
-
-**Status bar** — DHT node count, torrent count, the active rate caps, and session
-down/up speeds with cumulative totals.
-
-## Utilities
+**Handy to know**
 
 | | |
 |---|---|
-| Add torrent | File, magnet link, `http(s)://…/x.torrent`, bare 40-char info hash, or drag-and-drop |
-| Add dialog | Choose save folder and label, tick individual files, start paused, sequential mode |
-| Create torrent | Any file or folder; tracker tiers, web seeds, comment, piece size, private flag, and optional immediate seeding |
-| Queue | Per-torrent order with move up/down; caps on active torrents and active downloads |
-| Bandwidth | Global down/up caps plus a one-key alternate-limits profile (⇧⌘L) |
-| Per-file priority | High / Normal / Don't Download, applied live and remembered across restarts |
-| Force re-check | Re-hashes every piece against what is on disk |
-| Labels | Free-form, shown in the sidebar and as a column |
-| Sequential download | Per torrent, for streaming-ish access |
-| Incomplete files | Written as `<name>.part` and renamed on completion, so a half-downloaded file is never mistaken for a finished one. An existing `.part` is always resumed, even with the preference off, so toggling it never strands data |
-| Session | Torrents, progress, labels, priorities, column layout and window geometry all restore on launch |
-| Desktop integration | Completion notifications, `.torrent` file association, `magnet:` URL scheme, native menus and context menus; Dock progress badge on macOS |
-| Themes | Light and Dark, switchable in Preferences or View ▸ Appearance |
-| Privacy | SOCKS5 proxy and interface binding for trackers, web seeds and peer connections; protocol encryption (prefer or require); local peer discovery off by default |
+| Space | Pause or resume whatever is selected |
+| ⌘F / Ctrl+F | Search your list |
+| Right-click a torrent | Open the folder, copy the magnet link, remove it |
+| Bottom of the window | Your current download and upload speeds |
 
-### Privacy notes
+There are more shortcuts under each menu, and everything has a right-click menu.
 
-Preferences ▸ Connection has three controls worth understanding. All of them are
-deliberately fail-closed: anything that cannot be routed under a policy is
-switched off rather than sent around it, because a proxy that covers announces
-but leaks peer connections costs speed and hides nothing — the address the swarm
-records is the one the peers see.
+## What it can do
 
-**Protocol encryption** hides the peer handshake from traffic inspection.
-*Enabled* negotiates it and falls back to plaintext; *Required* refuses peers that
-will not encrypt, which is stricter but shrinks the usable swarm. It does nothing
-about tracker or DHT traffic.
+- Downloads from `.torrent` files and magnet links
+- Pause, resume, and queue up as many as you like
+- Pick which files inside a torrent you actually want
+- Speed limits, so it doesn't hog your connection
+- Labels and filters to keep a long list tidy
+- Light and dark themes
+- Optional privacy routing through a proxy or VPN connection
+- Make your own torrents to share
 
-**Proxy** routes tracker announces, web-seed fetches and outgoing peer connections
-through a SOCKS5 server, resolving hostnames at the proxy so no DNS leaks locally.
-Turning it on also disables DHT, local peer discovery, µTP, UPnP/NAT-PMP port
-mapping and `udp://` trackers, and closes the inbound listeners — with a proxy,
-connections are outgoing only. The password is kept in the system keychain via
-Electron's `safeStorage`, not in the settings file; where that is unavailable it
-falls back to plaintext rather than losing it.
+## Something not working?
 
-**Network interface** pins every outgoing connection to one interface's address —
-a VPN's, typically. If that interface goes away the connections fail instead of
-falling back to your normal one, and resume by themselves when it returns, which
-is the kill switch. The address is re-read per connection, so a VPN that
-reconnects on a different address is picked up without a restart. Local
-discovery, µTP, port mapping and `udp://` trackers stop while this is set; DHT
-keeps working, with its socket bound to the same interface.
+**The app won't open on macOS** — right-click it and choose Open (see above).
 
-Either policy needs a restart to take effect, and the log pane says so if you
-change one and forget.
+**The AppImage won't start on Linux** — it needs a system library called libfuse2.
+On Debian or Ubuntu: `sudo apt install libfuse2`.
 
-`npm test` covers both. `test:egress` exercises the routing against a local
-SOCKS5 server and a real interface — asserting, among other things, that a bound
-connection reaches the far end from the bound address, and that a dead proxy or a
-vanished interface fails the connection rather than falling back to a direct one.
-`test:secrets` covers the sealed password, including that a denied keychain does
-not destroy it.
+**Nothing is downloading** — a torrent needs other people online sharing it. Try one
+of the well-shared samples in `sample-torrents/` to check the app itself is fine.
 
-## Keyboard
+## Anything else
 
-| | |
-|---|---|
-| ⌘O / ⌘U / ⌘N | Add torrent / add from URL / create torrent |
-| ⌘R / ⌘P / ⌘. | Start / Pause / Stop |
-| ⌘E / ⌘T | Force re-check / update tracker |
-| ⌘↑ / ⌘↓ | Move up / down the queue |
-| ⌘⌫ / ⇧⌘⌫ | Remove / remove and delete data |
-| ⇧⌘C / ⇧⌘O | Copy magnet URI / open containing folder |
-| ⌘F | Focus the filter box |
-| ⌘1 / ⌘2 / ⌘3 | Toggle sidebar / detail pane / status bar |
-| ⇧⌘L | Toggle alternate speed limits |
-| Space | Pause or resume the selected torrent |
-| ↑ ↓ / ⇧↑ ⇧↓ | Move or extend the selection |
+Built with [WebTorrent](https://webtorrent.io) and [Electron](https://electronjs.org).
+Developer notes — building, architecture, privacy internals — are in
+[docs/development.md](docs/development.md).
 
-## Layout
+MIT licensed. Please only share files you have the right to share.
 
-```
-electron/
-  main.js       window, native menus, all IPC handlers, dock + notifications
-  preload.cjs   the contextBridge surface — the only thing the renderer can see
-  engine.js     WebTorrent wrapper: lifecycle, queue, priorities, snapshots
-  store.js      atomic JSON persistence for settings and the resume session
-renderer/
-  index.html    static shell
-  styles.css    the µTorrent theme, as CSS custom properties
-  app.js        toolbar, sidebar, transfer grid, detail tabs, input handling
-  dialogs.js    Add / Add-URL / Create / Preferences / Properties modals
-  icons.js      the inline SVG icon set
-  util.js       byte, speed, ETA and date formatting
-scripts/
-  make-icon.mjs generates build/icon.png and build/logo.svg, no image tooling
-  make-icns.sh  turns the PNG into build/icon.icns via sips + iconutil
-```
-
-The renderer runs sandboxed with context isolation and no Node access; it talks to the
-engine only over the named channels in `preload.cjs`. The main process polls the engine
-once a second and pushes one combined snapshot, so the UI never blocks on IPC.
-
-### Development flags
-
-```bash
-npx electron . --dev                     # detached devtools
-npx electron . --add=path/to.torrent     # add a torrent at launch
-npx electron . --shot=out.png \
-               --shot-delay=20 \
-               --shot-tabs --shot-quit   # capture the window (and each tab) headlessly
-ZTORRENT_SHOT_EVAL="ztorrentUI.setTab('peers')" npx electron . --shot=out.png
-```
-
-`window.ztorrentUI` exposes `doAction`, `setTab`, `select`, `openAdd` and `state()` — the
-same actions the toolbar triggers, useful for driving the app in tests.
-
-## Licence
-
-MIT. The Blender open-movie torrents are Creative Commons Attribution 3.0; the Debian
-image is distributed under Debian's own terms.
+[mac-arm]: https://github.com/odexion/ztorrent/releases/download/v0.1.0/ztorrent-0.1.0-mac-arm64.dmg
+[mac-x64]: https://github.com/odexion/ztorrent/releases/download/v0.1.0/ztorrent-0.1.0-mac-x64.dmg
+[win]: https://github.com/odexion/ztorrent/releases/download/v0.1.0/ztorrent-0.1.0-win-x64.exe
+[linux-appimage]: https://github.com/odexion/ztorrent/releases/download/v0.1.0/ztorrent-0.1.0-linux-x86_64.AppImage
+[linux-deb]: https://github.com/odexion/ztorrent/releases/download/v0.1.0/ztorrent-0.1.0-linux-amd64.deb
