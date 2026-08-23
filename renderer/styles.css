@@ -38,12 +38,12 @@
 
   /* Progress: mid-tone fills carrying dark text, as µTorrent/BitTorrent do. */
   --bar-track:        rgba(0, 0, 0, .07);
-  --bar:              #6aa9e0;
-  --bar-seed:         #8cc153;
+  --bar:              #3a78b8;
+  --bar-seed:         #4d8532;
   --bar-idle:         #c2c6cc;
-  --bar-err:          #e08b84;
-  --bar-label:        var(--ink-dim);
-  --bar-label-on:     #16324a;
+  --bar-err:          #c8524a;
+  --bar-label:        #5f666e;
+  --bar-label-on:     #ffffff;
   --piece-partial:    #e8a317;
 
   /* Semantics */
@@ -94,11 +94,11 @@
 
   --bar-track:        rgba(255, 255, 255, .10);
   --bar:              #3a72ad;
-  --bar-seed:         #4f8f34;
+  --bar-seed:         #478230;
   --bar-idle:         #4a4e55;
   --bar-err:          #a8453f;
   --bar-label:        var(--ink-dim);
-  --bar-label-on:     #eef4fb;
+  --bar-label-on:     #ffffff;
   --piece-partial:    #e0aa3c;
 
   --ok:               #3fc38a;

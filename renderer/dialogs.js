@@ -405,6 +405,8 @@ export async function openPreferences (settings, apply) {
             <div class="frow wide">${ck('startTorrentsAutomatically', 'Start torrents automatically')}</div>
             <div class="frow wide">${ck('askWhereToSave', 'Show the Add Torrent dialog')}</div>
             <div class="frow wide">${ck('sequentialDownload', 'Download pieces in order by default')}</div>
+            <div class="frow wide">${ck('partFiles', 'Append .part to incomplete files')}</div>
+            <div class="frow"><span></span><span class="hint">Renamed once the torrent finishes, so unfinished downloads are never mistaken for complete ones.</span></div>
           </fieldset>
           <fieldset><legend>Notifications</legend>
             <div class="frow wide">${ck('notifyOnComplete', 'Show a notification when a download finishes')}</div>

@@ -13,6 +13,7 @@ export const DEFAULT_SETTINGS = {
   askWhereToSave: true,
   startTorrentsAutomatically: true,
   sequentialDownload: false,
+  partFiles: true,        // write to <name>.part until the torrent completes
 
   // Bandwidth (kB/s; 0 = unlimited)
   maxDownloadRate: 0,

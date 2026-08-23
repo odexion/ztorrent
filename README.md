@@ -127,6 +127,7 @@ down/up speeds with cumulative totals.
 | Force re-check | Re-hashes every piece against what is on disk |
 | Labels | Free-form, shown in the sidebar and as a column |
 | Sequential download | Per torrent, for streaming-ish access |
+| Incomplete files | Written as `<name>.part` and renamed on completion, so a half-downloaded file is never mistaken for a finished one. An existing `.part` is always resumed, even with the preference off, so toggling it never strands data |
 | Session | Torrents, progress, labels, priorities, column layout and window geometry all restore on launch |
 | Desktop integration | Completion notifications, `.torrent` file association, `magnet:` URL scheme, native menus and context menus; Dock progress badge on macOS |
 | Themes | Light and Dark, switchable in Preferences or View ▸ Appearance |

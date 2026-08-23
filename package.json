@@ -22,6 +22,7 @@
   },
   "dependencies": {
     "create-torrent": "^6.1.3",
+    "fs-chunk-store": "^5.0.1",
     "parse-torrent": "^11.0.24",
     "webtorrent": "^3.0.21"
   },

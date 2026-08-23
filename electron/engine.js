@@ -1,4 +1,5 @@
 import { EventEmitter } from 'node:events'
+import { makePartStore, PART_SUFFIX } from './part-store.js'
 import fs from 'node:fs'
 import path from 'node:path'
 import crypto from 'node:crypto'
@@ -247,6 +248,13 @@ export class Engine extends EventEmitter {
       strategy: record.sequential ? 'sequential' : 'rarest',
       uploads: this.store.settings.maxUploadSlots
     }
+    // The store hands itself back through this holder so completion can ask it
+    // to rename the .part files.
+    const partHolder = {}
+    addOpts.store = makePartStore(partHolder, {
+      usePart: this.store.settings.partFiles !== false
+    })
+    record.partHolder = partHolder
     if (Array.isArray(record.wanted) && record.wanted.length) addOpts.so = record.wanted
 
     record.state = State.CHECKING
@@ -296,10 +304,12 @@ export class Engine extends EventEmitter {
     torrent.on('done', () => {
       if (!record.completedOn) record.completedOn = Date.now()
       record.state = State.SEEDING
-      this.log(`"${record.name}" finished downloading.`)
-      this.persist()
-      this.emit('complete', { id: record.id, name: record.name, path: record.savePath })
-      this.pumpQueue()
+      this._commitPartFiles(record, () => {
+        this.log(`"${record.name}" finished downloading.`)
+        this.persist()
+        this.emit('complete', { id: record.id, name: record.name, path: record.savePath })
+        this.pumpQueue()
+      })
     })
 
     torrent.on('error', err => {
@@ -483,6 +493,24 @@ export class Engine extends EventEmitter {
     this.persist()
     this.emit('changed')
     this.pumpQueue()
+  }
+
+  /**
+   * Drop the .part suffix now that every piece is present. Seeding continues
+   * through the same store object, which reopens on the final paths.
+   */
+  _commitPartFiles (record, done) {
+    const store = record.partHolder?.store
+    if (!store || store.committed) return done()
+    store.commit((err, renamed) => {
+      if (err) {
+        this.log(`Could not rename ${PART_SUFFIX} files for "${record.name}": ${err.message}`, 'error')
+      } else if (renamed.length) {
+        this.log(`Finalised ${renamed.length} file(s) for "${record.name}".`)
+      }
+      this.emit('changed')
+      done()
+    })
   }
 
   /** Force re-check: re-hash every piece against what is on disk. */
