@@ -20,7 +20,47 @@ trackers, magnet links, and HTTP web seeds. Drop a `.torrent` on it and it downl
 └────────────────────────────────────────────────────────────────┘
 ```
 
-## Running it
+## Installing
+
+macOS and Linux, from the latest release:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/odexion/ztorrent/main/scripts/install.sh | sh
+```
+
+On macOS that copies `ztorrent.app` into `/Applications` — or `~/Applications` when
+`/Applications` is not writable — and strips the quarantine flag, since the builds are
+unsigned. On Linux it drops the AppImage into `~/.local/bin/ztorrent` and writes a
+`.desktop` entry so it shows up in the launcher and handles `.torrent` files and
+`magnet:` links. Nothing needs sudo and nothing is written outside your home directory
+unless `/Applications` is already writable. x64 and arm64 are both covered; on Apple
+silicon a Rosetta shell still gets the native arm64 build.
+
+Read it before you pipe it to a shell — [`scripts/install.sh`][install] is a single file of
+POSIX sh with no dependencies beyond `curl` or `wget`. It takes a few environment variables:
+
+| | |
+|---|---|
+| `ZTORRENT_VERSION` | Tag to install, e.g. `v0.1.0` (default: the latest release) |
+| `ZTORRENT_REPO` | `owner/name` to install from (default: `odexion/ztorrent`) |
+| `ZTORRENT_PREFIX` | Linux: directory for the executable (default: `~/.local/bin`) |
+| `GITHUB_TOKEN` | Optional, only to lift the anonymous API rate limit |
+
+```bash
+curl -fsSL .../install.sh | ZTORRENT_VERSION=v0.1.0 sh
+```
+
+Re-running it installs over the top, so that is also how you upgrade. To uninstall,
+delete `ztorrent.app` on macOS, or `~/.local/bin/ztorrent`,
+`~/.local/share/applications/ztorrent.desktop` and `~/.local/share/ztorrent/` on Linux.
+
+Windows has no script — grab the `.exe` installer from the
+[releases page](https://github.com/odexion/ztorrent/releases). A `.deb` is published
+there too if you would rather have that than the AppImage.
+
+[install]: scripts/install.sh
+
+## Running it from source
 
 ```bash
 npm install
