@@ -36,21 +36,25 @@
   --sel-blur:         rgba(0, 0, 0, .05);
   --sel-blur-ink:     var(--ink);
 
-  /* Progress: fills deep enough that the white label reads at regular weight
-     -- all three sit at the same luminance, so contrast doesn't shift by state. */
+  /* Progress: Radix Colors step 9, the step that system specifies for solid
+     backgrounds -- the purest point of each scale, tuned to carry white text.
+     Seeding uses grass rather than green: green 9 sits only 55 degrees of hue
+     from the blue and reads as a cooler blue beside it, where grass is 75 and
+     reads as its own colour. Violet is darker than the rest because violet is,
+     at full chroma. */
   --bar-track:        rgba(0, 0, 0, .07);
-  --bar:              #3a8ad8;
-  --bar-seed:         #22a06b;
-  --bar-fin:          #9075d8;
-  --bar-idle:         #c2c6cc;
-  --bar-err:          #c8524a;
+  --bar:              #0091ff;
+  --bar-seed:         #46a758;
+  --bar-fin:          #6e56cf;
+  --bar-idle:         #889096;
+  --bar-err:          #e5484d;
   --bar-label:        #5f666e;
   --bar-label-on:     #ffffff;
   --piece-partial:    #e8a317;
 
   /* Semantics */
   --ok:               #1a8a5a;
-  --fin:              #6d4fc0;
+  --fin:              #6e56cf;
   --warn:             #b07500;
   --err:              #d64545;
   --down:             #2f7bf6;
@@ -96,17 +100,17 @@
   --sel-blur:         rgba(255, 255, 255, .07);
 
   --bar-track:        rgba(255, 255, 255, .10);
-  --bar:              #3a8ad8;
-  --bar-seed:         #22a06b;
-  --bar-fin:          #9075d8;
-  --bar-idle:         #4a4e55;
-  --bar-err:          #a8453f;
+  --bar:              #0091ff;
+  --bar-seed:         #46a758;
+  --bar-fin:          #6e56cf;
+  --bar-idle:         #889096;
+  --bar-err:          #e5484d;
   --bar-label:        var(--ink-dim);
   --bar-label-on:     #ffffff;
   --piece-partial:    #e0aa3c;
 
   --ok:               #3fc38a;
-  --fin:              #a98ae8;
+  --fin:              #9d8cdf;
   --warn:             #e0aa3c;
   --err:              #f0685f;
   --down:             #4b90ff;
@@ -465,7 +469,6 @@ html, body {
   min-width: 0;
   height: 22px;
   background: var(--bar-track);
-  border-radius: 2px;
   overflow: hidden;
 }
 .pbar > i {
@@ -499,10 +502,8 @@ html, body {
   color: var(--bar-label-on);
   clip-path: inset(0 calc(100% - var(--p, 0%)) 0 0);
 }
-/* The idle fill is a pale grey, so its label stays dark ink rather than the
-   white the coloured fills carry. */
-.pbar.idle > b.on { color: var(--ink); }
-.pbar.err  > b.on { color: #ffffff; }
+/* Every fill is now dark enough to carry the same white label -- the idle grey
+   included, so it no longer needs a colour of its own. */
 
 .pct {
   flex-shrink: 0;
@@ -657,7 +658,6 @@ html, body {
   height: 12px;
   min-width: 54px;
   background: var(--bar-track);
-  border-radius: 2px;
   overflow: hidden;
 }
 .minibar > i {
