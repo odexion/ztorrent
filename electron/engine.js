@@ -1,5 +1,6 @@
 import { EventEmitter } from 'node:events'
 import { makePartStore, PART_SUFFIX } from './part-store.js'
+import { egressPolicy, useEgress, guardedOptions, samePolicy, closeInbound } from './egress.js'
 import fs from 'node:fs'
 import path from 'node:path'
 import crypto from 'node:crypto'
@@ -43,21 +44,50 @@ export class Engine extends EventEmitter {
 
   start () {
     const s = this.store.settings
+    // Install before the client exists: the egress policy decides what the
+    // client is even allowed to switch on.
+    this.egress = egressPolicy(s)
+    const egressLabel = useEgress(this.egress)
+
     this.client = new WebTorrent({
       maxConns: s.globalMaxConnections,
       dht: s.enableDHT,
       lsd: s.enableLSD,
       utPex: s.enablePEX,
       utp: s.enableUTP,
+      // Message Stream Encryption. WebTorrent defaults this to 1; naming it
+      // here keeps the choice visible and lets the user require it.
+      secure: s.encryption ?? 1,
       natUpnp: s.enableUPnP,
       natPmp: s.enableUPnP,
       torrentPort: s.randomizePort ? 0 : s.listenPort,
       downloadLimit: s.maxDownloadRate > 0 ? s.maxDownloadRate * KB : -1,
-      uploadLimit: s.maxUploadRate > 0 ? s.maxUploadRate * KB : -1
+      uploadLimit: s.maxUploadRate > 0 ? s.maxUploadRate * KB : -1,
+      ...guardedOptions(this.egress)
     })
 
     this.client.on('error', err => this.log(`Client error: ${err.message || err}`, 'error'))
     this.log('ztorrent started. Listening for peers.')
+    if ((s.encryption ?? 1) === 2) {
+      this.log('Requiring protocol encryption: peers that will not encrypt are refused. ' +
+               'This shrinks the pool of usable peers.')
+    }
+    if (egressLabel) {
+      this.log(`Trackers, web seeds and peer connections go out via ${egressLabel}.`)
+      const off = ['local discovery', 'uTP', 'port mapping', 'udp:// trackers']
+      if (this.egress.proxy) off.unshift('DHT')
+      this.log(`${off.join(', ')} are off while this is on -- none of them can be routed.`)
+      if (this.egress.proxy) {
+        // Only once the pool has finished binding: the client's 'listening'
+        // step is what releases every torrent into discovery, and closing the
+        // server before it runs would stall all of them.
+        this.client.once('listening', () => {
+          if (closeInbound(this.client)) {
+            this.log('Inbound listeners closed: with a proxy, connections are outgoing only.')
+          }
+        })
+      }
+    }
 
     if (this.client.dht) {
       this.client.dht.on('ready', () => this.log('DHT bootstrap complete.'))
@@ -639,11 +669,18 @@ export class Engine extends EventEmitter {
     }
   }
 
+  /** True when the new settings need a restart to take effect. */
+  egressChanged (settings) {
+    return !samePolicy(this.egress, egressPolicy(settings))
+  }
+
   applySettings (settings) {
     if (!this.client) return
     this.client.throttleDownload(settings.maxDownloadRate > 0 ? settings.maxDownloadRate * KB : -1)
     this.client.throttleUpload(settings.maxUploadRate > 0 ? settings.maxUploadRate * KB : -1)
     this.client.maxConns = settings.globalMaxConnections
+    // Read afresh for every outgoing peer, so this one needs no restart.
+    this.client.secure = settings.encryption ?? 1
     for (const r of this.records.values()) {
       if (r.torrent) r.torrent._rechokeNumSlots = settings.maxUploadSlots
     }

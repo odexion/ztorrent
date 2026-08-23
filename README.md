@@ -131,6 +131,46 @@ down/up speeds with cumulative totals.
 | Session | Torrents, progress, labels, priorities, column layout and window geometry all restore on launch |
 | Desktop integration | Completion notifications, `.torrent` file association, `magnet:` URL scheme, native menus and context menus; Dock progress badge on macOS |
 | Themes | Light and Dark, switchable in Preferences or View ▸ Appearance |
+| Privacy | SOCKS5 proxy and interface binding for trackers, web seeds and peer connections; protocol encryption (prefer or require); local peer discovery off by default |
+
+### Privacy notes
+
+Preferences ▸ Connection has three controls worth understanding. All of them are
+deliberately fail-closed: anything that cannot be routed under a policy is
+switched off rather than sent around it, because a proxy that covers announces
+but leaks peer connections costs speed and hides nothing — the address the swarm
+records is the one the peers see.
+
+**Protocol encryption** hides the peer handshake from traffic inspection.
+*Enabled* negotiates it and falls back to plaintext; *Required* refuses peers that
+will not encrypt, which is stricter but shrinks the usable swarm. It does nothing
+about tracker or DHT traffic.
+
+**Proxy** routes tracker announces, web-seed fetches and outgoing peer connections
+through a SOCKS5 server, resolving hostnames at the proxy so no DNS leaks locally.
+Turning it on also disables DHT, local peer discovery, µTP, UPnP/NAT-PMP port
+mapping and `udp://` trackers, and closes the inbound listeners — with a proxy,
+connections are outgoing only. The password is kept in the system keychain via
+Electron's `safeStorage`, not in the settings file; where that is unavailable it
+falls back to plaintext rather than losing it.
+
+**Network interface** pins every outgoing connection to one interface's address —
+a VPN's, typically. If that interface goes away the connections fail instead of
+falling back to your normal one, and resume by themselves when it returns, which
+is the kill switch. The address is re-read per connection, so a VPN that
+reconnects on a different address is picked up without a restart. Local
+discovery, µTP, port mapping and `udp://` trackers stop while this is set; DHT
+keeps working, with its socket bound to the same interface.
+
+Either policy needs a restart to take effect, and the log pane says so if you
+change one and forget.
+
+`npm test` covers both. `test:egress` exercises the routing against a local
+SOCKS5 server and a real interface — asserting, among other things, that a bound
+connection reaches the far end from the bound address, and that a dead proxy or a
+vanished interface fails the connection rather than falling back to a direct one.
+`test:secrets` covers the sealed password, including that a denied keychain does
+not destroy it.
 
 ## Keyboard
 

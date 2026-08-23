@@ -384,8 +384,29 @@ const PREF_PAGES = [
 ]
 
 export async function openPreferences (settings, apply) {
+  const interfaces = await api.getInterfaces().catch(() => [])
   const ck = (key, label) =>
     `<label class="ck"><input type="checkbox" data-k="${key}" ${settings[key] ? 'checked' : ''}> ${label}</label>`
+  const txt = (key, label, placeholder = '') => `
+    <div class="frow">
+      <label>${label}</label>
+      <input type="text" data-k="${key}" value="${fmt.esc(String(settings[key] ?? ''))}"
+             placeholder="${placeholder}" spellcheck="false">
+    </div>`
+  const pw = (key, label) => `
+    <div class="frow">
+      <label>${label}</label>
+      <input type="password" data-k="${key}" value="${fmt.esc(String(settings[key] ?? ''))}">
+    </div>`
+  const sel = (key, label, opts, hint = '') => `
+    <div class="frow">
+      <label>${label}</label>
+      <select data-k="${key}" data-num>
+        ${opts.map(([v, t]) =>
+          `<option value="${v}" ${Number(settings[key]) === v ? 'selected' : ''}>${t}</option>`).join('')}
+      </select>
+    </div>
+    ${hint ? `<div class="frow"><div></div><div class="hint">${hint}</div></div>` : ''}`
   const num = (key, label, suffix = '', min = 0) => `
     <div class="frow">
       <label>${label}</label>
@@ -433,10 +454,49 @@ export async function openPreferences (settings, apply) {
             ${num('listenPort', 'Port used for incoming connections:', '', 0)}
             <div class="frow wide">${ck('enableUPnP', 'Map the port with UPnP / NAT-PMP')}</div>
           </fieldset>
+          <fieldset><legend>Proxy</legend>
+            <div class="frow wide">${ck('proxyEnabled', 'Route traffic through a SOCKS5 proxy')}</div>
+            ${txt('proxyHost', 'Proxy host:', '127.0.0.1')}
+            ${num('proxyPort', 'Proxy port:', '', 1)}
+            ${txt('proxyUsername', 'Username:', '(optional)')}
+            ${pw('proxyPassword', 'Password:')}
+            <div class="frow"><div></div><div class="hint">Covers tracker announces, web seeds and
+              outgoing peer connections. Anything that cannot be routed is switched off rather than
+              sent around the proxy: DHT, local discovery, µTP, port mapping and udp:// trackers all
+              stop while this is on. Takes effect after a restart.</div></div>
+          </fieldset>
+          <fieldset><legend>Network interface</legend>
+            <div class="frow">
+              <label>Send traffic from:</label>
+              <select data-k="bindInterface">
+                <option value="" ${!settings.bindInterface ? 'selected' : ''}>Any (follow the routing table)</option>
+                ${interfaces.map(i => `<option value="${fmt.esc(i.name)}"
+                  ${settings.bindInterface === i.name ? 'selected' : ''}>${fmt.esc(i.name)} — ${fmt.esc(i.address)}</option>`).join('')}
+                ${settings.bindInterface && !interfaces.some(i => i.name === settings.bindInterface)
+                  ? `<option value="${fmt.esc(settings.bindInterface)}" selected>${fmt.esc(settings.bindInterface)} — not present</option>` : ''}
+              </select>
+            </div>
+            <div class="frow"><div></div><div class="hint">Pin every outgoing connection to one
+              interface — a VPN's, typically. If it goes away, connections fail instead of falling
+              back to your normal one, and resume by themselves when it returns. Local discovery,
+              µTP, port mapping and udp:// trackers stop while this is set; DHT keeps working,
+              bound to the same interface. Takes effect after a restart.</div></div>
+          </fieldset>
+          <fieldset><legend>Protocol encryption</legend>
+            ${sel('encryption', 'Peer connections:', [
+              [0, 'Disabled — plaintext handshakes'],
+              [1, 'Enabled — encrypt when the peer supports it'],
+              [2, 'Required — refuse peers that will not encrypt']
+            ], 'Hides the handshake from traffic inspection. It does not hide ' +
+               'tracker or DHT activity, and your address is still public to the swarm.')}
+          </fieldset>
           <fieldset><legend>Peer discovery</legend>
             <div class="frow wide">${ck('enableDHT', 'Enable DHT (distributed hash table)')}</div>
             <div class="frow wide">${ck('enablePEX', 'Enable peer exchange')}</div>
             <div class="frow wide">${ck('enableLSD', 'Enable local peer discovery')}</div>
+            <div class="frow"><div></div><div class="hint">Local discovery broadcasts each torrent's
+              infohash in the clear to every device on your network, and only finds peers on that
+              same network. Off by default.</div></div>
             <div class="frow wide">${ck('enableUTP', 'Enable µTP (micro transport protocol)')}</div>
             <div class="frow"><div></div><div class="hint">Discovery changes take effect after a restart.</div></div>
           </fieldset>
@@ -501,6 +561,27 @@ export async function openPreferences (settings, apply) {
         const dir = await api.chooseFolder('Choose Download Folder')
         if (dir) box.querySelector('[data-k="downloadPath"]').value = dir
       }
+      // The proxy switches these off in the engine whatever the boxes say, so
+      // grey them out rather than letting the sheet imply otherwise.
+      const proxyBox = box.querySelector('[data-k="proxyEnabled"]')
+      const bindSel = box.querySelector('[data-k="bindInterface"]')
+      const grey = (el, off) => {
+        el.disabled = off
+        el.closest('label').style.opacity = off ? '.45' : ''
+      }
+      const syncSuppressed = () => {
+        const proxied = proxyBox.checked
+        const pinned = proxied || !!bindSel.value
+        // DHT survives a bind -- its socket can be pinned too -- but not a proxy.
+        grey(box.querySelector('[data-k="enableDHT"]'), proxied)
+        for (const k of ['enableLSD', 'enableUTP', 'enableUPnP']) {
+          grey(box.querySelector(`[data-k="${k}"]`), pinned)
+        }
+      }
+      proxyBox.onchange = syncSuppressed
+      bindSel.onchange = syncSuppressed
+      syncSuppressed()
+
       // Live-preview the theme while the sheet is open.
       box.querySelector('[data-k="theme"]').onchange = e => {
         document.documentElement.dataset.theme = e.target.value
@@ -512,6 +593,7 @@ export async function openPreferences (settings, apply) {
         const k = el.dataset.k
         if (el.type === 'checkbox') patch[k] = el.checked
         else if (el.type === 'number') patch[k] = Number(el.value) || 0
+        else if (el.dataset.num !== undefined) patch[k] = Number(el.value)
         else patch[k] = el.value
       }
       apply(patch)

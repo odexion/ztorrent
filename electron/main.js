@@ -1,10 +1,11 @@
-import { app, BrowserWindow, ipcMain, dialog, Menu, shell, clipboard, Notification, nativeTheme } from 'electron'
+import { app, BrowserWindow, ipcMain, dialog, Menu, shell, clipboard, Notification, nativeTheme, safeStorage } from 'electron'
 import path from 'node:path'
 import fs from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import createTorrent from 'create-torrent'
 import parseTorrent from 'parse-torrent'
 import { Engine, State } from './engine.js'
+import { listInterfaces } from './egress.js'
 import { Store, DEFAULT_SETTINGS } from './store.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
@@ -161,11 +162,20 @@ ipcMain.handle('details', (_e, id) => { selectedId = id; return id ? engine.deta
 ipcMain.handle('settings:get', () => store.settings)
 ipcMain.handle('labels:get', () => store.data.labels || [])
 ipcMain.handle('log:get', () => engine.logLines)
+ipcMain.handle('interfaces:get', () => listInterfaces())
 ipcMain.handle('columns:get', () => store.data.columns)
 ipcMain.handle('columns:set', (_e, cols) => { store.set('columns', cols); return true })
 
 ipcMain.handle('settings:set', (_e, patch) => {
+  // Read before the patch lands, so we can tell the user their proxy is not
+  // in force yet rather than letting them assume it is.
+  const egressMoved = engine.egressChanged({ ...store.settings, ...patch })
   const next = store.patchSettings(patch)
+  if (egressMoved) {
+    engine.log(next.proxyEnabled || next.bindInterface
+      ? 'Proxy or interface binding changed. It takes effect when ztorrent restarts -- until then traffic goes out as it did before.'
+      : 'Proxy and interface binding turned off. They stay in force until ztorrent restarts.')
+  }
   engine.applySettings(next)
   if (patch.theme) applyNativeTheme(next.theme)
   win?.webContents.send('settings-changed', next)
@@ -600,13 +610,30 @@ function showAbout () {
 
 // ------------------------------------------------------------------ bootstrap
 
+/**
+ * Keeps the proxy password out of the settings file. safeStorage is backed by
+ * the Keychain on macOS and DPAPI on Windows; where it is unavailable (some
+ * Linux desktops) we hand back nothing and the value stays plaintext, as it
+ * was before -- losing the password would be worse than storing it.
+ */
+function makeSecretCodec () {
+  if (!safeStorage.isEncryptionAvailable()) {
+    console.warn('[store] safeStorage unavailable; secrets stay in plain text')
+    return null
+  }
+  return {
+    encrypt: value => safeStorage.encryptString(String(value)).toString('base64'),
+    decrypt: sealed => safeStorage.decryptString(Buffer.from(String(sealed), 'base64'))
+  }
+}
+
 app.whenReady().then(() => {
   // Packaged builds get their icon from the bundle; unpackaged runs need it set.
   if (process.platform === 'darwin' && !app.isPackaged) {
     const iconPath = path.join(ROOT, 'build', 'icon.png')
     if (fs.existsSync(iconPath)) app.dock?.setIcon(iconPath)
   }
-  store = new Store(app.getPath('userData'))
+  store = new Store(app.getPath('userData'), makeSecretCodec())
   engine = new Engine(store)
 
   applyNativeTheme(store.settings.theme)

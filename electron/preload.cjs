@@ -17,6 +17,7 @@ contextBridge.exposeInMainWorld('ztorrent', {
   setSettings: patch => invoke('settings:set', patch),
   getLabels: () => invoke('labels:get'),
   getLog: () => invoke('log:get'),
+  getInterfaces: () => invoke('interfaces:get'),
   getColumns: () => invoke('columns:get'),
   setColumns: cols => invoke('columns:set', cols),
 
