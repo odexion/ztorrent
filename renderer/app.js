@@ -75,9 +75,10 @@ const STATUS_LABEL = {
   error: 'Error'
 }
 
+/* Wording only -- the percentage is the caller's to add, so a state never
+   carries its own copy of a number the bar is already appending. */
 function statusText (r) {
   if (r.state === 'error') return `Error: ${r.error || 'unknown'}`
-  if (r.state === 'checking') return `Checking ${fmt.pct(r.done, 1)}`
   if (r.state === 'stopped' && r.done >= 1) return 'Finished'
   return STATUS_LABEL[r.state] || r.state
 }
