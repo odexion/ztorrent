@@ -181,7 +181,7 @@ install_mac() {
   mkdir -p "$dest"
   app="$dest/ztorrent.app"
 
-  say "Downloading ztorrent $TAG for macOS $ARCH…"
+  say "Downloading ztorrent $TAG for macOS ${ARCH}…"
   download "$url" "$WORK/ztorrent.dmg"
 
   MNT=$(mktemp -d "${TMPDIR:-/tmp}/ztorrent-mnt.XXXXXX")
@@ -216,7 +216,7 @@ install_linux() {
   mkdir -p "$PREFIX"
   bin="$PREFIX/ztorrent"
 
-  say "Downloading ztorrent $TAG for Linux $ARCH…"
+  say "Downloading ztorrent $TAG for Linux ${ARCH}…"
   download "$url" "$WORK/ztorrent.AppImage"
   chmod +x "$WORK/ztorrent.AppImage"
   mv -f "$WORK/ztorrent.AppImage" "$bin"
