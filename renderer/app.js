@@ -400,10 +400,7 @@ function paintCell (cell, key, r, index, cache) {
     case 'size': text = fmt.bytes(r.wantedSize || r.size); break
     case 'status': {
       const w = (Math.max(0, Math.min(1, r.done)) * 100).toFixed(2)
-      const cls = r.state === 'error' ? 'err'
-        : r.done >= 1 ? 'seed'
-        : (r.state === 'downloading' || r.state === 'checking' || r.state === 'metadata') ? ''
-        : 'idle'
+      const cls = barClass(r)
       // Progress reads from the bar, so only show the number while it's moving.
       const label = (r.done >= 1 || r.state === 'error')
         ? statusText(r)
@@ -433,6 +430,16 @@ function paintCell (cell, key, r, index, cache) {
   cache.set(key, val)
   if (html !== null) cell.innerHTML = html
   else cell.textContent = text
+}
+
+/* Complete torrents split two ways: green while they're still giving back to
+   the swarm, purple once they've stopped -- 'Finished' is its own state, not a
+   quieter kind of seeding. */
+function barClass (r) {
+  if (r.state === 'error') return 'err'
+  if (r.done >= 1) return r.state === 'seeding' ? 'seed' : 'fin'
+  if (r.state === 'downloading' || r.state === 'checking' || r.state === 'metadata') return ''
+  return 'idle'
 }
 
 function stateIcon (r) {
@@ -536,7 +543,7 @@ function renderGeneral () {
 
   el.innerHTML = `
     <div class="gen-bar">
-      <div class="pbar ${r.done >= 1 ? 'seed' : ''}">
+      <div class="pbar ${barClass(r)}">
         <i style="width:${(r.done * 100).toFixed(2)}%"></i>
       </div>
       <span class="pct">${fmt.pct(r.done, 2)}</span>

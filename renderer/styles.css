@@ -36,10 +36,12 @@
   --sel-blur:         rgba(0, 0, 0, .05);
   --sel-blur-ink:     var(--ink);
 
-  /* Progress: mid-tone fills carrying dark text, as µTorrent/BitTorrent do. */
+  /* Progress: fills deep enough that the white label reads at regular weight
+     -- all three sit at the same luminance, so contrast doesn't shift by state. */
   --bar-track:        rgba(0, 0, 0, .07);
-  --bar:              #87c1f3;
-  --bar-seed:         #aed47c;
+  --bar:              #3a8ad8;
+  --bar-seed:         #22a06b;
+  --bar-fin:          #9075d8;
   --bar-idle:         #c2c6cc;
   --bar-err:          #c8524a;
   --bar-label:        #5f666e;
@@ -48,6 +50,7 @@
 
   /* Semantics */
   --ok:               #1a8a5a;
+  --fin:              #6d4fc0;
   --warn:             #b07500;
   --err:              #d64545;
   --down:             #2f7bf6;
@@ -62,7 +65,7 @@
   --font: -apple-system, "SF Pro Text", system-ui, "Segoe UI", Roboto, sans-serif;
   --mono: "SF Mono", ui-monospace, Menlo, Monaco, monospace;
   --fs: 13px;
-  --row-h: 30px;
+  --row-h: 26px;
   --radius: 6px;
   --radius-lg: 10px;
 }
@@ -93,8 +96,9 @@
   --sel-blur:         rgba(255, 255, 255, .07);
 
   --bar-track:        rgba(255, 255, 255, .10);
-  --bar:              #87c1f3;
-  --bar-seed:         #aed47c;
+  --bar:              #3a8ad8;
+  --bar-seed:         #22a06b;
+  --bar-fin:          #9075d8;
   --bar-idle:         #4a4e55;
   --bar-err:          #a8453f;
   --bar-label:        var(--ink-dim);
@@ -102,6 +106,7 @@
   --piece-partial:    #e0aa3c;
 
   --ok:               #3fc38a;
+  --fin:              #a98ae8;
   --warn:             #e0aa3c;
   --err:              #f0685f;
   --down:             #4b90ff;
@@ -446,8 +451,8 @@ html, body {
 
 /* State reads from the icon's colour, so the name column carries no extra ink. */
 .cell.name svg.st-downloading { color: var(--down); }
-.cell.name svg.st-seeding,
-.cell.name svg.st-completed   { color: var(--ok); }
+.cell.name svg.st-seeding     { color: var(--ok); }
+.cell.name svg.st-completed   { color: var(--fin); }
 .cell.name svg.st-error       { color: var(--err); }
 
 /* --- the progress bar --------------------------------------------------- */
@@ -458,7 +463,7 @@ html, body {
   position: relative;
   flex: 1;
   min-width: 0;
-  height: 16px;
+  height: 22px;
   background: var(--bar-track);
   border-radius: 2px;
   overflow: hidden;
@@ -470,6 +475,7 @@ html, body {
   transition: width .25s ease;
 }
 .pbar.seed > i { background: var(--bar-seed); }
+.pbar.fin  > i { background: var(--bar-fin); }
 .pbar.idle > i { background: var(--bar-idle); }
 .pbar.err  > i { background: var(--bar-err); }
 
@@ -482,11 +488,8 @@ html, body {
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 11px;
-  font-weight: 700;
-  /* The body sets antialiased smoothing, which thins strokes badly for light
-     text on a light fill. Subpixel rendering puts the weight back. */
-  -webkit-font-smoothing: subpixel-antialiased;
+  font-size: 13px;
+  font-weight: 400;
   color: var(--bar-label);
   white-space: nowrap;
   overflow: hidden;
@@ -496,8 +499,8 @@ html, body {
   color: var(--bar-label-on);
   clip-path: inset(0 calc(100% - var(--p, 0%)) 0 0);
 }
-/* The idle and error fills are darker than the blue/green, so they keep their
-   own label colours rather than the shared dark ink. */
+/* The idle fill is a pale grey, so its label stays dark ink rather than the
+   white the coloured fills carry. */
 .pbar.idle > b.on { color: var(--ink); }
 .pbar.err  > b.on { color: #ffffff; }
 
@@ -587,7 +590,7 @@ html, body {
   max-width: 520px;
   margin-bottom: 22px;
 }
-.gen-bar .pbar { height: 18px; }
+.gen-bar .pbar { height: 28px; }
 .gen-bar .pct { font-size: 13px; font-weight: 500; color: var(--ink); }
 
 .gen-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 0 40px; }
