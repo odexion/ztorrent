@@ -43,9 +43,7 @@
   --bar-idle:         #c2c6cc;
   --bar-err:          #c8524a;
   --bar-label:        #5f666e;
-  /* These fills are light enough that white text vanishes on them (under 2:1);
-     dark ink clears 8:1 on both. */
-  --bar-label-on:     #10242c;
+  --bar-label-on:     #ffffff;
   --piece-partial:    #e8a317;
 
   /* Semantics */
@@ -100,7 +98,7 @@
   --bar-idle:         #4a4e55;
   --bar-err:          #a8453f;
   --bar-label:        var(--ink-dim);
-  --bar-label-on:     #10242c;
+  --bar-label-on:     #ffffff;
   --piece-partial:    #e0aa3c;
 
   --ok:               #3fc38a;
