@@ -1029,11 +1029,27 @@ function wireEvents () {
   body.addEventListener('blur', () => body.classList.remove('focused'))
   body.classList.add('focused')
 
+  // A plain click on a row that is already part of a multi-row selection may be
+  // the start of a drag of the whole selection, so the collapse to that one row
+  // waits for mouseup -- by which point a drag, if there was one, has taken the
+  // selection with it.
+  let pendingSelect = null
   body.addEventListener('mousedown', e => {
+    pendingSelect = null
     const row = e.target.closest('.grid-row')
     if (!row) { S.selection.clear(); syncSelection(); return }
     if (e.button === 2 && S.selection.has(row.dataset.id)) return
+    const plain = e.button === 0 && !e.metaKey && !e.ctrlKey && !e.shiftKey
+    if (plain && S.selection.size > 1 && S.selection.has(row.dataset.id)) {
+      pendingSelect = row.dataset.id
+      return
+    }
     selectId(row.dataset.id, { additive: e.metaKey || e.ctrlKey, range: e.shiftKey })
+  })
+  body.addEventListener('mouseup', e => {
+    const id = pendingSelect
+    pendingSelect = null
+    if (id && e.target.closest('.grid-row')?.dataset.id === id) selectId(id, {})
   })
   body.addEventListener('dblclick', e => {
     const row = e.target.closest('.grid-row')
@@ -1166,6 +1182,9 @@ function wireEvents () {
   $('#list-body').addEventListener('dragstart', e => {
     const row = e.target.closest('.grid-row')
     if (!row) return
+    // The drag takes the whole selection, so the click that started it must not
+    // collapse the selection to one row afterwards.
+    pendingSelect = null
     // Dragging a row outside the selection acts on just that row.
     if (!S.selection.has(row.dataset.id)) selectId(row.dataset.id, {})
     S.dragIds = [...S.selection]
@@ -1183,7 +1202,11 @@ function wireEvents () {
     }
   })
 
-  $('#list-body').addEventListener('dragend', () => { S.dragIds = null; clearDropTarget() })
+  $('#list-body').addEventListener('dragend', () => {
+    pendingSelect = null
+    S.dragIds = null
+    clearDropTarget()
+  })
 
   $('#sidebar').addEventListener('dragover', e => {
     if (!S.dragIds) return
