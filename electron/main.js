@@ -585,10 +585,6 @@ function buildMenu () {
     {
       label: 'View',
       submenu: [
-        { label: 'Show Sidebar', type: 'checkbox', checked: true, accelerator: 'CmdOrCtrl+1', click: send('toggle-sidebar') },
-        { label: 'Show Detailed Info', type: 'checkbox', checked: true, accelerator: 'CmdOrCtrl+2', click: send('toggle-detail') },
-        { label: 'Show Status Bar', type: 'checkbox', checked: true, accelerator: 'CmdOrCtrl+3', click: send('toggle-statusbar') },
-        { type: 'separator' },
         {
           label: 'Appearance',
           submenu: [

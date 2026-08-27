@@ -54,9 +54,6 @@ const S = {
   log: [],
   history: new Map(),        // torrent id -> {down:[], up:[]}
   globalHistory: { down: [], up: [] },
-  showSidebar: true,
-  showDetail: true,
-  showStatusbar: true,
   didAutoSelect: false,
   dragIds: null            // torrent ids being dragged onto a label, if any
 }
@@ -529,7 +526,6 @@ const selectedRow = () => S.rows.find(r => S.selection.has(r.id) && r.id === [..
                           S.rows.find(r => S.selection.has(r.id))
 
 function renderDetail () {
-  if (!S.showDetail) return
   switch (S.tab) {
     case 'general':  renderGeneral(); break
     case 'trackers': renderTrackers(); break
@@ -929,19 +925,6 @@ async function doAction (act, arg) {
       break
     }
     case 'focus-search': $('#search').focus(); $('#search').select(); break
-    case 'toggle-sidebar':
-      S.showSidebar = !S.showSidebar
-      $('#body').classList.toggle('no-sidebar', !S.showSidebar)
-      break
-    case 'toggle-detail':
-      S.showDetail = !S.showDetail
-      $('#main').classList.toggle('no-detail', !S.showDetail)
-      if (S.showDetail) renderDetail()
-      break
-    case 'toggle-statusbar':
-      S.showStatusbar = !S.showStatusbar
-      $('#statusbar').style.display = S.showStatusbar ? '' : 'none'
-      break
     default:
       if (act.startsWith('label:')) await api.setLabel(sel, act.slice(6))
       if (act.startsWith('col:')) toggleColumn(act.slice(4))
@@ -1290,7 +1273,7 @@ function wireEvents () {
     }
   })
 
-  window.addEventListener('resize', () => { if (S.showDetail) renderDetail() })
+  window.addEventListener('resize', () => renderDetail())
 }
 
 function dragSplit (el, axis, get, set, sign = 1) {

@@ -262,8 +262,6 @@ html, body {
   min-height: 0;
   background: var(--bg);
 }
-#body.no-sidebar { grid-template-columns: 0 0 1fr; }
-#body.no-sidebar #sidebar, #body.no-sidebar #vsplit { display: none; }
 
 /* ==================================================================== sidebar */
 
@@ -473,8 +471,6 @@ html, body {
   min-width: 0;
   min-height: 0;
 }
-#main.no-detail { grid-template-rows: 1fr 0 0; }
-#main.no-detail #hsplit, #main.no-detail #detail { display: none; }
 
 /* ================================================================ torrent list */
 
