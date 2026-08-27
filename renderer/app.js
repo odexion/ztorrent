@@ -15,11 +15,11 @@ const ALL_COLUMNS = [
   { key: 'name',          label: 'Name',         w: 360, sort: r => r.name, cmp: fmt.compareText },
   { key: 'size',          label: 'Size',         w: 78,  num: true,  sort: r => r.size },
   { key: 'status',        label: 'Status',       w: 220,             sort: r => r.done },
-  { key: 'seeds',         label: 'Seeds',        w: 68,  num: true,  sort: r => r.seeds },
-  { key: 'peers',         label: 'Peers',        w: 68,  num: true,  sort: r => r.peers },
   { key: 'downloadSpeed', label: 'Down Speed',   w: 110,  num: true,  sort: r => r.downloadSpeed },
   { key: 'uploadSpeed',   label: 'Up Speed',     w: 88,  num: true,  sort: r => r.uploadSpeed },
   { key: 'eta',           label: 'ETA',          w: 72,  num: true,  sort: r => r.eta },
+  { key: 'seeds',         label: 'Seeds',        w: 68,  num: true,  sort: r => r.seeds },
+  { key: 'peers',         label: 'Peers',        w: 68,  num: true,  sort: r => r.peers },
   { key: 'downloaded',    label: 'Downloaded',   w: 86,  num: true,  sort: r => r.downloaded },
   { key: 'uploaded',      label: 'Uploaded',     w: 86,  num: true,  sort: r => r.uploaded },
   { key: 'ratio',         label: 'Ratio',        w: 68,  num: true,  sort: r => r.ratio },
@@ -30,8 +30,35 @@ const ALL_COLUMNS = [
   { key: 'savePath',      label: 'Save Path',    w: 200,             sort: r => r.savePath, cmp: fmt.compareText }
 ]
 
-const DEFAULT_VISIBLE = ['#', 'name', 'size', 'status', 'seeds', 'peers',
-  'downloadSpeed', 'uploadSpeed', 'eta', 'ratio', 'addedOn']
+const DEFAULT_VISIBLE = ['#', 'name', 'size', 'status', 'downloadSpeed',
+  'uploadSpeed', 'eta', 'seeds', 'peers', 'ratio', 'addedOn']
+
+/**
+ * Seeds and Peers used to sit between Status and Down Speed. They now follow
+ * the speeds and the ETA, so the figures that move every second sit together
+ * instead of being split by two peer counts.
+ *
+ * An order saved by an older build still has the old arrangement, and a saved
+ * order wins over the default -- so it is rewritten here. Only when the two
+ * are still exactly where that build left them, though: a layout someone
+ * arranged by hand is theirs, and is left alone.
+ */
+function migrateColumns (order) {
+  const seeds = order.indexOf('seeds')
+  const peers = order.indexOf('peers')
+  const down = order.indexOf('downloadSpeed')
+  const untouched = seeds >= 0 && peers === seeds + 1 && down === peers + 1
+  if (!untouched) return order
+
+  const rest = order.filter(k => k !== 'seeds' && k !== 'peers')
+  // Behind the ETA where it is shown, otherwise behind whichever speed is.
+  const anchor = ['eta', 'uploadSpeed', 'downloadSpeed']
+    .map(k => rest.indexOf(k)).find(i => i >= 0)
+  if (anchor === undefined) return order
+
+  rest.splice(anchor + 1, 0, 'seeds', 'peers')
+  return rest
+}
 
 /* ═══════════════════════════════════════════════════════════════════ ui state */
 
@@ -96,8 +123,13 @@ async function init () {
   S.labelStyles = await api.getLabelStyles()
   S.log = await api.getLog()
   const savedCols = await api.getColumns()
-  // 'done' merged into 'status'; drop it from orders saved by older builds.
-  if (savedCols?.order?.length) S.columns = savedCols.order.filter(k => k !== 'done')
+  if (savedCols?.order?.length) {
+    // 'done' merged into 'status'; drop it from orders saved by older builds.
+    S.columns = migrateColumns(savedCols.order.filter(k => k !== 'done'))
+    if (S.columns.join() !== savedCols.order.join()) {
+      api.setColumns({ order: S.columns, widths: savedCols.widths || S.widths })
+    }
+  }
   if (savedCols?.widths) S.widths = savedCols.widths
   applyTheme()
 
