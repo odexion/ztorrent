@@ -10,6 +10,10 @@ import os from 'node:os'
 
 export const DEFAULT_SETTINGS = {
   downloadPath: path.join(os.homedir(), 'Downloads'),
+  // Where the last torrent was actually saved. The Add dialog offers this
+  // instead of downloadPath, so a run of torrents going to the same drive is
+  // picked once rather than once each. Cleared when downloadPath is changed.
+  lastSavePath: '',
   askWhereToSave: true,
   startTorrentsAutomatically: true,
   sequentialDownload: false,

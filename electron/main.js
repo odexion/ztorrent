@@ -167,6 +167,13 @@ ipcMain.handle('columns:get', () => store.data.columns)
 ipcMain.handle('columns:set', (_e, cols) => { store.set('columns', cols); return true })
 
 ipcMain.handle('settings:set', (_e, patch) => {
+  // Preferences sends every field on every save, so only an actual change of
+  // the default download folder counts here -- and when it changes, that
+  // deliberate choice wins over wherever the last torrent happened to go.
+  if (patch.downloadPath !== undefined && patch.lastSavePath === undefined &&
+      patch.downloadPath !== store.settings.downloadPath) {
+    patch = { ...patch, lastSavePath: '' }
+  }
   // Read before the patch lands, so we can tell the user their proxy is not
   // in force yet rather than letting them assume it is.
   const egressMoved = engine.egressChanged({ ...store.settings, ...patch })
@@ -196,7 +203,9 @@ ipcMain.handle('add:dialog', async () => {
 
 ipcMain.handle('add:paths', async (_e, paths) => {
   const out = []
-  for (const p of paths) out.push(await engine.add(p))
+  // Adding several at once skips the sheet, so it follows the same remembered
+  // folder the sheet would have offered ('' falls back to downloadPath).
+  for (const p of paths) out.push(await engine.add(p, { savePath: store.settings.lastSavePath }))
   return out
 })
 

@@ -95,8 +95,12 @@ export function openPrompt (title, label, value = '') {
 
 /* ════════════════════════════════════════════════════════════ Add Torrent */
 
-/** The "Add New Torrent" sheet: destination, contents, and start options. */
-export async function openAddDialog (source) {
+/**
+ * The "Add New Torrent" sheet: destination, contents, and start options.
+ * `defaultPath` overrides the offered folder for this sheet only; without one
+ * we offer wherever the last torrent went, falling back to the default folder.
+ */
+export async function openAddDialog (source, defaultPath = '') {
   const settings = await api.getSettings()
   const labels = await api.getLabels()
   const info = await api.inspectTorrent(source)
@@ -112,6 +116,7 @@ export async function openAddDialog (source) {
     })
   }
 
+  const saveIn = defaultPath || settings.lastSavePath || settings.downloadPath
   const isMagnet = typeof source === 'string' && source.startsWith('magnet:')
   const files = info.files || []
   const hasFiles = files.length > 0
@@ -128,7 +133,7 @@ export async function openAddDialog (source) {
       <legend>Save In</legend>
       <div class="frow wide">
         <div class="path-row">
-          <input type="text" data-role="path" value="${fmt.esc(settings.downloadPath)}">
+          <input type="text" data-role="path" value="${fmt.esc(saveIn)}">
           <button class="small" data-role="browse">Browse…</button>
         </div>
       </div>
@@ -223,6 +228,8 @@ export async function openAddDialog (source) {
         savePath, label, sequential, paused: !start, wanted, priorities
       })
       if (res?.duplicate) throw new Error('This torrent is already in the list.')
+      // Remember where it went, so the next torrent is offered the same folder.
+      if (savePath !== settings.lastSavePath) await api.setSettings({ lastSavePath: savePath })
       return res
     }
   })
@@ -244,7 +251,7 @@ export async function openUrlDialog () {
       <div class="frow" style="margin-top:8px">
         <label>Save In:</label>
         <div class="path-row">
-          <input type="text" data-role="path" value="${fmt.esc(settings.downloadPath)}">
+          <input type="text" data-role="path" value="${fmt.esc(settings.lastSavePath || settings.downloadPath)}">
           <button class="small" data-role="browse">Browse…</button>
         </div>
       </div>
@@ -271,7 +278,7 @@ export async function openUrlDialog () {
     }
   })
   if (!url) return
-  return openAddDialog(url.url)
+  return openAddDialog(url.url, url.savePath)
 }
 
 /* ══════════════════════════════════════════════════════════ Create Torrent */
