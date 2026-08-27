@@ -7,6 +7,7 @@ import parseTorrent from 'parse-torrent'
 import { Engine, State } from './engine.js'
 import { listInterfaces } from './egress.js'
 import { Store, DEFAULT_SETTINGS } from './store.js'
+import { Updater, UpdateState } from './updater.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const ROOT = path.join(__dirname, '..')
@@ -31,6 +32,7 @@ const SHOT_QUIT = process.argv.includes('--shot-quit')
 let win = null
 let engine = null
 let store = null
+let updater = null
 let tickTimer = null
 let selectedId = null
 let pendingOpen = []      // torrents handed to us before the window exists
@@ -182,6 +184,37 @@ ipcMain.handle('labels:setStyle', (_e, name, style) => {
   return styles
 })
 ipcMain.handle('log:get', () => engine.logLines)
+
+// ---- updates
+ipcMain.handle('update:get', () => updater.state())
+ipcMain.handle('update:check', async () => {
+  const state = await updater.check({ manual: true })
+  // A manual check that finds nothing has to say so; the automatic one stays
+  // quiet, which is the whole difference between the two.
+  if (state.state === UpdateState.IDLE) {
+    dialog.showMessageBox(win, {
+      type: 'info',
+      message: `ztorrent ${app.getVersion()} is up to date.`,
+      buttons: ['OK']
+    })
+  } else if (state.error) {
+    dialog.showMessageBox(win, {
+      type: 'warning',
+      message: 'Could not check for updates.',
+      detail: state.error || '',
+      buttons: ['OK']
+    })
+  }
+  return state
+})
+ipcMain.handle('update:download', () => updater.download())
+ipcMain.handle('update:openPage', () => updater.openReleasePage())
+ipcMain.handle('update:apply', async () => {
+  if (!updater.applyAndRestart()) return false
+  // The hand-off script is already waiting on this process to exit.
+  app.quit()
+  return true
+})
 ipcMain.handle('interfaces:get', () => listInterfaces())
 ipcMain.handle('columns:get', () => store.data.columns)
 ipcMain.handle('columns:set', (_e, cols) => { store.set('columns', cols); return true })
@@ -205,6 +238,9 @@ ipcMain.handle('settings:set', (_e, patch) => {
   }
   engine.applySettings(next)
   if (patch.theme) applyNativeTheme(next.theme)
+  if (patch.autoUpdate !== undefined && app.isPackaged) {
+    next.autoUpdate ? updater.start() : updater.stop()
+  }
   win?.webContents.send('settings-changed', next)
   return next
 })
@@ -505,6 +541,7 @@ function buildMenu () {
       label: 'ztorrent',
       submenu: [
         { label: 'About ztorrent', click: showAbout },
+        { label: 'Check for Updates…', click: checkForUpdates },
         { type: 'separator' },
         { label: 'Preferences…', accelerator: 'CmdOrCtrl+,', click: send('preferences') },
         { type: 'separator' },
@@ -614,11 +651,18 @@ function buildMenu () {
       role: 'help',
       submenu: [
         { label: 'ztorrent Help', click: showAbout },
-        { label: 'Sample Torrents Folder', click: () => shell.openPath(SAMPLES) }
+        { label: 'Sample Torrents Folder', click: () => shell.openPath(SAMPLES) },
+        ...(isMac ? [] : [{ type: 'separator' },
+                          { label: 'Check for Updates…', click: checkForUpdates }])
       ]
     }
   ]
   Menu.setApplicationMenu(Menu.buildFromTemplate(template))
+}
+
+/** Menu entry point; the renderer reaches the same check over IPC. */
+function checkForUpdates () {
+  win?.webContents.send('menu', { action: 'check-updates' })
 }
 
 function setTheme (theme) {
@@ -645,8 +689,8 @@ function applyNativeTheme (theme) {
 function showAbout () {
   dialog.showMessageBox(win, {
     type: 'info',
-    message: 'ztorrent 1.0.0',
-    detail: 'A BitTorrent client for macOS.\n\nBuilt on WebTorrent — DHT, PEX, LSD, µTP,\nHTTP/UDP trackers and web seeds.',
+    message: `ztorrent ${app.getVersion()}`,
+    detail: 'A BitTorrent client for macOS, Windows and Linux.\n\nBuilt on WebTorrent — DHT, PEX, LSD, µTP,\nHTTP/UDP trackers and web seeds.',
     buttons: ['OK']
   })
 }
@@ -694,10 +738,24 @@ app.whenReady().then(() => {
     n.show()
   })
 
+  updater = new Updater(path.join(app.getPath('userData'), 'updates'))
+  // The status bar carries the whole flow; the Dock badge is left to the
+  // ticker, which rewrites it every second for download progress and would
+  // wipe anything put there from here.
+  updater.on('state', state => win?.webContents.send('update', state))
+
+  // A build staged by an earlier run is still installable, and is offered
+  // again rather than downloaded again. Independent of the automatic check,
+  // which the user may have turned off since it was staged.
+  updater.resume()
+
   engine.start()
   buildMenu()
   createWindow()
   startTicker()
+
+  // Unpackaged runs would be swapping a source tree, not an installed app.
+  if (store.settings.autoUpdate && app.isPackaged) updater.start()
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()

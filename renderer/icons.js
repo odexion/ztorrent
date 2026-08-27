@@ -174,6 +174,11 @@ const P = {
   /* ---- status bar & misc ---- */
   down: `<path d="M12 4.5v13M6.5 12l5.5 5.5 5.5-5.5"/>`,
 
+  // Updates: an arrow into a tray for one waiting to be fetched, a closing
+  // circular arrow for one waiting on a restart.
+  download: `<path d="M12 3.5v10M8 9.5l4 4 4-4"/><path d="M4.5 16v3a1.5 1.5 0 0 0 1.5 1.5h12a1.5 1.5 0 0 0 1.5-1.5v-3"/>`,
+  restart: `<path d="M20 12a8 8 0 1 1-2.6-5.9"/><path d="M20 3.5V9h-5.5"/>`,
+
   up: `<path d="M12 19.5v-13M6.5 12 12 6.5l5.5 5.5"/>`,
 
   folder: `<path d="M20 20.5H4a2 2 0 0 1-2-2v-13a2 2 0 0 1 2-2h4.6l2.4 3H20a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2z"/>`,

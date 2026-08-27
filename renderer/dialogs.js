@@ -93,6 +93,16 @@ export function openPrompt (title, label, value = '') {
   })
 }
 
+/** A plain yes/no sheet. Resolves true only when the primary button is used. */
+export function openConfirm (title, message, okLabel = 'OK') {
+  return modal({
+    title,
+    width: 420,
+    okLabel,
+    body: `<div class="confirm">${fmt.esc(message)}</div>`
+  }).then(v => v === true)
+}
+
 /* ════════════════════════════════════════════════════════════ Add Torrent */
 
 /**
@@ -494,6 +504,11 @@ export async function openPreferences (settings, apply) {
             <div class="frow wide">${ck('notifyOnComplete', 'Show a notification when a download finishes')}</div>
             <div class="frow wide">${ck('confirmOnDelete', 'Confirm before removing a torrent')}</div>
             <div class="frow wide">${ck('showSpeedInDock', 'Show download progress on the Dock icon')}</div>
+          </fieldset>
+          <fieldset><legend>Updates</legend>
+            <div class="frow wide">${ck('autoUpdate', 'Check for new versions automatically')}</div>
+            <div class="frow"><span></span><span class="hint">Downloads the new build in the background
+              and offers a restart when it is ready. Nothing is installed until you say so.</span></div>
           </fieldset>
         </div>
 

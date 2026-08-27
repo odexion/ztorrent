@@ -62,6 +62,17 @@ resume by themselves when you reopen the app, so it's safe to quit partway throu
 
 There are more shortcuts under each menu, and everything has a right-click menu.
 
+### Updates
+
+ztorrent checks for a new version in the background. When one is out, the bottom-right
+of the window offers it; it downloads quietly and then reads **Restart to update**.
+Click it and ztorrent closes, swaps itself for the new version and opens again. Your
+downloads pick up where they left off.
+
+Nothing is installed until you click, and you can turn the whole thing off in
+**Preferences ▸ General ▸ Updates**. To check by hand, use **Check for Updates…**
+(in the ztorrent menu on macOS, under Help elsewhere).
+
 ## What it can do
 
 - Downloads from `.torrent` files and magnet links
@@ -72,6 +83,7 @@ There are more shortcuts under each menu, and everything has a right-click menu.
 - Light and dark themes
 - Optional privacy routing through a proxy or VPN connection
 - Make your own torrents to share
+- Tells you when a new version is out, and updates itself when you say so
 
 ## Something not working?
 

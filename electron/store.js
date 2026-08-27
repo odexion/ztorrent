@@ -52,6 +52,10 @@ export const DEFAULT_SETTINGS = {
   seedRatioLimit: 0,      // 0 = seed forever
   seedTimeLimit: 0,       // minutes, 0 = forever
 
+  // Updates. Checks GitHub for a newer release and stages it; the swap only
+  // happens when the user asks for it. Off means no network calls at all.
+  autoUpdate: true,
+
   // UI
   theme: 'classic',       // 'classic' | 'graphite'
   confirmOnDelete: true,

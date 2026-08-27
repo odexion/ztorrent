@@ -23,6 +23,13 @@ contextBridge.exposeInMainWorld('ztorrent', {
   getColumns: () => invoke('columns:get'),
   setColumns: cols => invoke('columns:set', cols),
 
+  // ---- updates
+  getUpdate: () => invoke('update:get'),
+  checkForUpdate: () => invoke('update:check'),
+  downloadUpdate: () => invoke('update:download'),
+  applyUpdate: () => invoke('update:apply'),
+  openReleasePage: () => invoke('update:openPage'),
+
   // ---- adding
   addTorrentDialog: () => invoke('add:dialog'),
   addTorrentPaths: paths => invoke('add:paths', paths),
@@ -65,7 +72,7 @@ contextBridge.exposeInMainWorld('ztorrent', {
 
   // ---- events pushed from main
   on: (channel, handler) => {
-    const allowed = ['tick', 'log', 'changed', 'menu', 'open-torrent', 'settings-changed']
+    const allowed = ['tick', 'log', 'changed', 'menu', 'open-torrent', 'settings-changed', 'update']
     if (!allowed.includes(channel)) return () => {}
     const listener = (_e, payload) => handler(payload)
     ipcRenderer.on(channel, listener)

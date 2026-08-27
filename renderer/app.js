@@ -1,6 +1,6 @@
 import { icon, tagStyle } from './icons.js'
 import * as fmt from './util.js'
-import { openAddDialog, openUrlDialog, openCreateDialog, openPreferences, openPrompt, openProperties, openLabelStyle } from './dialogs.js'
+import { openAddDialog, openUrlDialog, openCreateDialog, openPreferences, openPrompt, openProperties, openLabelStyle, openConfirm } from './dialogs.js'
 
 const api = window.ztorrent
 const $ = sel => document.querySelector(sel)
@@ -55,7 +55,8 @@ const S = {
   history: new Map(),        // torrent id -> {down:[], up:[]}
   globalHistory: { down: [], up: [] },
   didAutoSelect: false,
-  dragIds: null            // torrent ids being dragged onto a label, if any
+  dragIds: null,           // torrent ids being dragged onto a label, if any
+  update: null             // updater state; null until main reports one
 }
 const HISTORY_LEN = 150
 
@@ -126,6 +127,10 @@ async function init () {
   api.on('settings-changed', s => { S.settings = s; applyTheme(); renderStatusbar() })
   api.on('menu', onMenu)
   api.on('open-torrent', src => openAddDialog(src))
+  api.on('update', state => { S.update = state; renderUpdate() })
+
+  S.update = await api.getUpdate().catch(() => null)
+  renderUpdate()
 }
 
 function applyTheme () {
@@ -494,6 +499,61 @@ function renderStatusbar () {
     `<span style="color:var(--up)">${icon('up')}</span>` +
     `<span>U: ${fmt.speed(g.uploadSpeed, false)}</span>` +
     `<span class="k">T: ${fmt.bytes(g.uploaded)}</span>`
+}
+
+/* ══════════════════════════════════════════════════════════════════ updates */
+
+/* One pill in the status bar carries the whole flow: it says what the updater
+   is doing, and clicking it does the next thing. Anything the user has not
+   asked about -- an idle check, a check that came back with nothing -- shows
+   nothing at all, so the bar stays as quiet as it was before. */
+const UPDATE_VIEW = {
+  checking:    () => ({ text: 'Checking for updates…', busy: true }),
+  available:   u => ({ text: `Update available · ${u.version}`, act: 'download' }),
+  downloading: u => ({
+    text: `Downloading update · ${u.size ? Math.round((u.received / u.size) * 100) : 0}%`,
+    busy: true
+  }),
+  staging:     () => ({ text: 'Preparing update…', busy: true }),
+  ready:       u => ({ text: `Restart to update · ${u.version}`, act: 'apply', ready: true }),
+  error:       u => ({ text: 'Update check failed', act: 'retry', title: u.error || '' })
+}
+
+function renderUpdate () {
+  const el = $('#sb-update')
+  const u = S.update
+  const view = u && UPDATE_VIEW[u.state]?.(u)
+
+  // Idle, or a check the user never asked for that found nothing.
+  if (!view) { el.hidden = true; el.dataset.act = ''; return }
+
+  el.hidden = false
+  el.dataset.act = view.act || ''
+  el.classList.toggle('ready', Boolean(view.ready))
+  el.classList.toggle('busy', Boolean(view.busy))
+  el.title = view.title || (view.ready
+    ? 'Install the update and restart ztorrent'
+    : '')
+  el.innerHTML = `${icon(view.ready ? 'restart' : 'download')}<span>${fmt.esc(view.text)}</span>`
+}
+
+async function onUpdateClick () {
+  const act = $('#sb-update').dataset.act
+  if (act === 'download') {
+    // Nothing to install for this platform -- a Linux build outside an
+    // AppImage, say. Point at the release rather than pretending.
+    if (S.update?.installable === false) return api.openReleasePage()
+    await api.downloadUpdate()
+  } else if (act === 'retry') {
+    await api.checkForUpdate()
+  } else if (act === 'apply') {
+    const ok = await openConfirm(
+      'Restart to update',
+      `ztorrent ${S.update.version} is ready to install. ztorrent will close, ` +
+      'update itself and open again. Downloads resume where they left off.',
+      'Restart')
+    if (ok) await api.applyUpdate()
+  }
 }
 
 /* ═════════════════════════════════════════════════════════════ detail tabs */
@@ -925,6 +985,7 @@ async function doAction (act, arg) {
       break
     }
     case 'focus-search': $('#search').focus(); $('#search').select(); break
+    case 'check-updates': await api.checkForUpdate(); break
     default:
       if (act.startsWith('label:')) await api.setLabel(sel, act.slice(6))
       if (act.startsWith('col:')) toggleColumn(act.slice(4))
@@ -965,6 +1026,8 @@ function wireEvents () {
   $('#search').addEventListener('keydown', e => {
     if (e.key === 'Escape') { e.target.value = ''; S.search = ''; renderList(); e.target.blur() }
   })
+
+  $('#sb-update').addEventListener('click', onUpdateClick)
 
   $('#sidebar').addEventListener('click', e => {
     if (e.target.closest('.tree-item[data-drop="new"]')) return void doAction('label-new')

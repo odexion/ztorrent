@@ -52,6 +52,36 @@ signing. A locally built `.app` runs fine; one that has been downloaded will nee
 `xattr -dr com.apple.quarantine /Applications/ztorrent.app` or a right-click ▸ Open.
 Windows SmartScreen will likewise warn about the unsigned installer.
 
+### Updating in place
+
+These builds are unsigned, so Squirrel and the platform update services are out — both
+want a signature before they will replace an application. `electron/updater.js` does by
+hand what `scripts/install.sh` does: read the latest release off the GitHub API, pick the
+artifact whose name matches this platform and architecture, and put it where the running
+copy lives. The two must agree on that naming, so a change to one is a change to both.
+
+The swap cannot happen while the app holds its own files open, so it is written out as a
+small `/bin/sh` script and started detached. It waits for our pid to exit, moves the old
+copy aside, puts the new one in place, and launches it. Moving rather than deleting is
+the point: if the copy fails, the old version goes back, and the worst case is the
+version you already had starting up again.
+
+On macOS the `.app` is lifted out of the `.dmg` while the app is still running — a
+failure there can still be reported in the UI, where one after quitting cannot. Linux
+swaps the AppImage (and only when running from one; a `.deb` install needs the package
+manager). Windows hands the downloaded NSIS installer the job, since it already knows
+how to stop, replace and restart the app.
+
+Two environment variables make it testable without publishing anything:
+
+```bash
+ZTORRENT_UPDATE_FEED=http://127.0.0.1:8000/feed.json   # a release JSON to read instead
+ZTORRENT_UPDATE_PRETEND_VERSION=0.0.1                  # pretend to be older than we are
+```
+
+`applyAndRestart()` refuses to run unpackaged — `app.getPath('exe')` points at
+`Electron.app` in a dev run, and the swap would happily replace it.
+
 ## Sample torrents
 
 `sample-torrents/` ships four well-seeded, freely distributable torrents so the app can be
@@ -111,6 +141,7 @@ electron/
   preload.cjs   the contextBridge surface — the only thing the renderer can see
   engine.js     WebTorrent wrapper: lifecycle, queue, priorities, snapshots
   store.js      atomic JSON persistence for settings and the resume session
+  updater.js    release check, artifact download, and the swap-on-restart script
 renderer/
   index.html    static shell
   styles.css    the µTorrent theme, as CSS custom properties
@@ -119,6 +150,7 @@ renderer/
   icons.js      the inline SVG icon set
   util.js       byte, speed, ETA and date formatting
 scripts/
+  install.sh    the curl one-liner — resolves a release, draws its own progress bar
   make-icon.mjs generates build/icon.png and build/logo.svg, no image tooling
   make-icns.sh  turns the PNG into build/icon.icns via sips + iconutil
 ```
