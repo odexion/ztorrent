@@ -1,6 +1,6 @@
-import { icon } from './icons.js'
+import { icon, tagStyle } from './icons.js'
 import * as fmt from './util.js'
-import { openAddDialog, openUrlDialog, openCreateDialog, openPreferences, openPrompt, openProperties } from './dialogs.js'
+import { openAddDialog, openUrlDialog, openCreateDialog, openPreferences, openPrompt, openProperties, openLabelStyle } from './dialogs.js'
 
 const api = window.ztorrent
 const $ = sel => document.querySelector(sel)
@@ -41,6 +41,7 @@ const S = {
   details: null,
   settings: {},
   labels: [],
+  labelStyles: {},        // { [label]: { symbol, color } } -- see icons.js
   selection: new Set(),
   anchor: null,
   category: 'all',
@@ -94,6 +95,7 @@ init()
 async function init () {
   S.settings = await api.getSettings()
   S.labels = await api.getLabels()
+  S.labelStyles = await api.getLabelStyles()
   S.log = await api.getLog()
   const savedCols = await api.getColumns()
   // 'done' merged into 'status'; drop it from orders saved by older builds.
@@ -121,6 +123,7 @@ async function init () {
   })
   api.on('changed', async () => {
     S.labels = await api.getLabels()
+    S.labelStyles = await api.getLabelStyles()
     renderSidebar()
   })
   api.on('settings-changed', s => { S.settings = s; applyTheme(); renderStatusbar() })
@@ -250,12 +253,20 @@ const SIDEBAR_ITEMS = [
 ]
 
 function renderSidebar () {
-  const item = (id, label, ic, cls = '') => `
-    <div class="tree-item ${cls} ${S.category === id ? 'selected' : ''}" data-cat="${id}">
+  const item = (id, label, ic, cls = '', tag = '') => `
+    <div class="tree-item ${cls} ${S.category === id ? 'selected' : ''}" data-cat="${fmt.esc(id)}"${tag ? ` data-tag="${tag}"` : ''}>
       ${ic ? icon(ic) : '<span style="width:13px"></span>'}
       <span class="lbl">${fmt.esc(label)}</span>
       <span class="cnt" data-count="${id}"></span>
     </div>`
+
+  // A label wears the symbol and colour it was given, the plain grey tag until
+  // then. tagStyle() is what stands between a stale name in the state file and
+  // a row with no icon at all.
+  const labelItem = l => {
+    const { symbol, color } = tagStyle(S.labelStyles[l])
+    return item('label:' + l, l, symbol, 'child', color)
+  }
 
   let html = `<div class="tree-group">
     ${item('all', 'Torrents', 'torrents', 'root')}
@@ -268,7 +279,7 @@ function renderSidebar () {
     <div class="group-title">Labels</div>
     <div class="tree-children">
       ${item('nolabel', 'No Label', 'label', 'child')}
-      ${S.labels.map(l => item('label:' + l, l, 'label', 'child')).join('')}
+      ${S.labels.map(labelItem).join('')}
       <div class="tree-item child new-label" data-drop="new">
         ${icon('create')}<span class="lbl">New Label…</span>
       </div>
@@ -981,6 +992,16 @@ function wireEvents () {
       el.classList.toggle('selected', el.dataset.cat === S.category)
     }
     renderList()
+  })
+
+  $('#sidebar').addEventListener('contextmenu', async e => {
+    e.preventDefault()
+    const item = e.target.closest('.tree-item[data-cat^="label:"]')
+    if (!item) return
+    const name = item.dataset.cat.slice(6)
+    if (await api.contextMenu('label', { name }) !== 'style') return
+    const style = await openLabelStyle(name, S.labelStyles[name])
+    if (style) await api.setLabelStyle(name, style)
   })
 
   // --- column header: sort, resize, chooser

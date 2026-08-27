@@ -161,6 +161,26 @@ ipcMain.handle('snapshot', () => ({ rows: engine.snapshot(), globals: engine.glo
 ipcMain.handle('details', (_e, id) => { selectedId = id; return id ? engine.details(id) : null })
 ipcMain.handle('settings:get', () => store.settings)
 ipcMain.handle('labels:get', () => store.data.labels || [])
+ipcMain.handle('labels:styles', () => store.data.labelStyles || {})
+
+/**
+ * A label's symbol and colour. Passing null clears it back to the default,
+ * which is also what keeps the file from collecting entries for labels that
+ * were only ever looked at. The renderer redraws off 'changed' like it does
+ * for every other library edit.
+ */
+ipcMain.handle('labels:setStyle', (_e, name, style) => {
+  if (typeof name !== 'string' || !name) return store.data.labelStyles || {}
+  const styles = { ...(store.data.labelStyles || {}) }
+  if (style && (style.symbol || style.color)) {
+    styles[name] = { symbol: String(style.symbol || ''), color: String(style.color || '') }
+  } else {
+    delete styles[name]
+  }
+  store.set('labelStyles', styles)
+  win?.webContents.send('changed')
+  return styles
+})
 ipcMain.handle('log:get', () => engine.logLines)
 ipcMain.handle('interfaces:get', () => listInterfaces())
 ipcMain.handle('columns:get', () => store.data.columns)
@@ -423,6 +443,10 @@ ipcMain.handle('util:contextMenu', (_e, kind, payload) => new Promise(resolve =>
     template = [
       { label: 'Add Peer…', click: pick('add') },
       { label: 'Copy Peer Address', click: pick('copy') }
+    ]
+  } else if (kind === 'label') {
+    template = [
+      { label: `Customize "${payload.name}"…`, click: pick('style') }
     ]
   } else if (kind === 'columns') {
     template = payload.columns.map(c => ({

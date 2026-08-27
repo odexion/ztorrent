@@ -127,6 +127,10 @@ export class Store {
       settings,
       torrents: Array.isArray(parsed.torrents) ? parsed.torrents : [],
       labels: Array.isArray(parsed.labels) ? parsed.labels : [],
+      // { [label]: { symbol, color } } -- absent for labels left as they came.
+      labelStyles: (parsed.labelStyles && typeof parsed.labelStyles === 'object')
+        ? parsed.labelStyles
+        : {},
       columns: parsed.columns || null,
       window: parsed.window || null
     }

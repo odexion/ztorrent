@@ -73,6 +73,21 @@
   --ic-active:        var(--warn);
   --ic-inactive:      var(--bar-idle);
 
+  /* Label tags. Eight hues so two labels never collide by accident, spaced
+     far enough round the wheel to stay apart at 16px, and weighted for a
+     line glyph on a pale surface rather than for a filled bar. Five of them
+     are the state colours by another name -- a sidebar holding both should
+     look like one palette, not two. Slate leads: it is what an
+     uncustomised label already wears. */
+  --tag-slate:        #6b7076;
+  --tag-blue:         #2f7bf6;
+  --tag-teal:         #0d87a8;
+  --tag-green:        #22a06b;
+  --tag-amber:        #b07500;
+  --tag-red:          #d64545;
+  --tag-violet:       #6e56cf;
+  --tag-pink:         #c2298a;
+
   /* Area fills under the speed graph's two series */
   --chart-down-fill:  rgba(47, 123, 246, .16);
   --chart-up-fill:    rgba(34, 160, 107, .16);
@@ -128,6 +143,15 @@
   --err:              #f0685f;
   --down:             #4b90ff;
   --up:               #3fc38a;
+
+  --tag-slate:        #9aa0a8;
+  --tag-blue:         #4b90ff;
+  --tag-teal:         #3ab6cf;
+  --tag-green:        #3fc38a;
+  --tag-amber:        #e0aa3c;
+  --tag-red:          #f0685f;
+  --tag-violet:       #9d8cdf;
+  --tag-pink:         #ee7bbb;
 
   --chart-down-fill:  rgba(75, 144, 255, .20);
   --chart-up-fill:    rgba(47, 189, 130, .20);
@@ -275,6 +299,18 @@ html, body {
 .tree-item[data-cat="completed"]   svg { color: var(--ic-completed); }
 .tree-item[data-cat="active"]      svg { color: var(--ic-active); }
 .tree-item[data-cat="inactive"]    svg { color: var(--ic-inactive); }
+
+/* A label wears whatever colour it was given. Scoped to a direct child so the
+   same attribute drives the preview in the customise sheet, and placed after
+   the rule above because they carry equal specificity. */
+[data-tag="slate"]  > svg { color: var(--tag-slate); }
+[data-tag="blue"]   > svg { color: var(--tag-blue); }
+[data-tag="teal"]   > svg { color: var(--tag-teal); }
+[data-tag="green"]  > svg { color: var(--tag-green); }
+[data-tag="amber"]  > svg { color: var(--tag-amber); }
+[data-tag="red"]    > svg { color: var(--tag-red); }
+[data-tag="violet"] > svg { color: var(--tag-violet); }
+[data-tag="pink"]   > svg { color: var(--tag-pink); }
 .tree-item .lbl { flex: 1; overflow: hidden; text-overflow: ellipsis; }
 .tree-item .cnt {
   color: var(--ink-faint);
@@ -326,6 +362,77 @@ html, body {
 .tree-item.new-label { color: var(--ink-faint); }
 .tree-item.new-label svg { width: 14px; height: 14px; color: var(--ink-faint); }
 .tree-item.new-label:hover { color: var(--ink); }
+
+/* ============================================================ label customise */
+
+/* The sheet is two grids of one-tap choices, so its buttons drop the standard
+   button chrome: a box round every swatch would out-shout the colours it is
+   meant to be showing. Selection is a ring, in the accent, on both grids. */
+.tag-preview {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 34px;
+  padding: 0 10px;
+  margin-bottom: 14px;
+  border-radius: var(--radius);
+  background: var(--sunken);
+  font-weight: 500;
+}
+.tag-preview > svg { width: 16px; height: 16px; flex-shrink: 0; }
+.tag-preview .cnt { color: var(--ink-faint); font-size: 12px; }
+
+.tag-heading {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  margin-bottom: 8px;
+}
+
+.tag-colors {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 18px;
+}
+.tag-colors button {
+  width: 26px;
+  height: 26px;
+  min-width: 0;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: var(--sw);
+  box-shadow: 0 0 0 0 var(--accent);
+  transition: box-shadow .12s ease, transform .12s ease;
+}
+.tag-colors button:hover { transform: scale(1.08); background: var(--sw); }
+.tag-colors button[aria-pressed="true"] {
+  box-shadow: 0 0 0 2px var(--raised), 0 0 0 4px var(--accent);
+}
+
+.tag-symbols {
+  display: grid;
+  grid-template-columns: repeat(8, 1fr);
+  gap: 6px;
+}
+.tag-symbols button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  height: 36px;
+  padding: 0;
+  border-color: transparent;
+  background: var(--sunken);
+}
+.tag-symbols button > svg { width: 18px; height: 18px; }
+.tag-symbols button:hover { background: var(--hover); }
+.tag-symbols button[aria-pressed="true"] {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+}
 
 /* Cursor-following chip shown when dragging more than one torrent. */
 .drag-ghost {

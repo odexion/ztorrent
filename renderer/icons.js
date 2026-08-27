@@ -81,6 +81,64 @@ const P = {
     <path d="M12 7.4v5.4"/>
     <circle cx="12" cy="16.4" r="1.1" fill="currentColor" stroke="none"/>`,
 
+  /* ---- label symbols ----
+     Drawn to the same 24-grid and weight as the rest, so a label wearing one
+     sits at the same visual density as the categories above it. `label` and
+     `folder` above are part of the set too; see TAG_SYMBOLS. */
+  star: `<path d="M12 3.2 14.7 8.7l6.1.9-4.4 4.3 1 6.1-5.4-2.9-5.4 2.9 1-6.1-4.4-4.3 6.1-.9z"/>`,
+
+  heart: `
+    <path d="M20.4 5.9a5.1 5.1 0 0 0-7.2 0L12 7.1l-1.2-1.2a5.1 5.1 0 0 0-7.2 7.2l8.4 8.4 8.4-8.4a5.1 5.1 0 0 0 0-7.2z"/>`,
+
+  flag: `<path d="M5 21.2V3.4"/><path d="M5 4.5h12.6l-2 3.7 2 3.7H5z"/>`,
+
+  bookmark: `<path d="M6.5 3.5h11a1 1 0 0 1 1 1v16.2L12 16.4l-6.5 4.3V4.5a1 1 0 0 1 1-1z"/>`,
+
+  pin: `
+    <path d="M12 21.5c4.7-4.6 7-8.2 7-11a7 7 0 1 0-14 0c0 2.8 2.3 6.4 7 11z"/>
+    <circle cx="12" cy="10.2" r="2.6"/>`,
+
+  box: `
+    <path d="M3 7.6 12 3l9 4.6v8.8L12 21l-9-4.6z"/>
+    <path d="M3 7.6 12 12.2l9-4.6M12 12.2V21"/>`,
+
+  disc: `<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="2.4"/>`,
+
+  film: `
+    <rect x="2.5" y="4.5" width="19" height="15" rx="2.5"/>
+    <path d="M7 4.5v15M17 4.5v15"/>
+    <path d="M2.5 9.2h4.5M2.5 14.8h4.5M17 9.2h4.5M17 14.8h4.5"/>`,
+
+  music: `
+    <path d="M9.2 18.3V6.1l10-2v12.2"/>
+    <path d="M9.2 10.1l10-2"/>
+    <circle cx="6.8" cy="18.3" r="2.4"/>
+    <circle cx="16.8" cy="16.3" r="2.4"/>`,
+
+  image: `
+    <rect x="3" y="4.5" width="18" height="15" rx="2.5"/>
+    <circle cx="8.7" cy="9.6" r="1.6"/>
+    <path d="m4.2 18 4.3-4.3 3.2 3.2 3-3 4.6 4.6"/>`,
+
+  book: `
+    <path d="M12 7.2v13.3"/>
+    <path d="M12 7.2C10.4 5.5 8.2 4.8 4.5 4.8v12.6c3.7 0 5.9.7 7.5 2.4"/>
+    <path d="M12 7.2c1.6-1.7 3.8-2.4 7.5-2.4v12.6c-3.7 0-5.9.7-7.5 2.4"/>`,
+
+  monitor: `
+    <rect x="2.5" y="4" width="19" height="13" rx="2.2"/>
+    <path d="M12 17v4M8.5 21h7"/>`,
+
+  gamepad: `
+    <rect x="2.5" y="7.5" width="19" height="10" rx="5"/>
+    <path d="M7.2 11v3M5.7 12.5h3"/>
+    <circle cx="16.1" cy="11.6" r="1.05" fill="currentColor" stroke="none"/>
+    <circle cx="18.4" cy="13.9" r="1.05" fill="currentColor" stroke="none"/>`,
+
+  terminal: `
+    <rect x="2.5" y="4" width="19" height="16" rx="2.5"/>
+    <path d="m7 10 3 2.6-3 2.6M13 15.2h4"/>`,
+
   /* ---- detail tabs ---- */
   info: `
     <circle cx="12" cy="12" r="9"/>
@@ -145,3 +203,36 @@ export function icon (name, size, cls) {
 }
 
 export const ICON_NAMES = Object.keys(P)
+
+/**
+ * The symbols a label may wear, in picker order: the tag first as the default,
+ * then marks, then the kinds of thing people keep. Sixteen fits a 4x4 grid and
+ * is a choice rather than a catalogue -- the point is to tell your labels apart
+ * at a glance, which a hundred glyphs make harder, not easier.
+ */
+export const TAG_SYMBOLS = [
+  'label', 'star', 'heart', 'flag',
+  'bookmark', 'pin', 'folder', 'box',
+  'disc', 'film', 'music', 'image',
+  'book', 'monitor', 'gamepad', 'terminal'
+]
+
+/**
+ * The hues a label may wear. Each is a CSS token (--tag-<name>) resolved per
+ * theme, so a label keeps its identity in light and dark rather than its hex.
+ * Slate leads because it is the absence of a choice: the colour an
+ * uncustomised label already has.
+ */
+export const TAG_COLORS = [
+  'slate', 'blue', 'teal', 'green', 'amber', 'red', 'violet', 'pink'
+]
+
+export const DEFAULT_TAG = { symbol: 'label', color: 'slate' }
+
+/** Falls back rather than rendering a blank row if a stored name goes stale. */
+export function tagStyle (style) {
+  return {
+    symbol: TAG_SYMBOLS.includes(style?.symbol) ? style.symbol : DEFAULT_TAG.symbol,
+    color: TAG_COLORS.includes(style?.color) ? style.color : DEFAULT_TAG.color
+  }
+}

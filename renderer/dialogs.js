@@ -1,4 +1,4 @@
-import { icon } from './icons.js'
+import { icon, TAG_SYMBOLS, TAG_COLORS, tagStyle } from './icons.js'
 import * as fmt from './util.js'
 
 const api = window.ztorrent
@@ -279,6 +279,60 @@ export async function openUrlDialog () {
   })
   if (!url) return
   return openAddDialog(url.url, url.savePath)
+}
+
+/* ═══════════════════════════════════════════════════════════ Customise Label */
+
+/**
+ * Picks the symbol and colour a label wears in the sidebar. Both grids are
+ * one tap with the row above them updating as you go, so the sheet shows the
+ * result rather than describing it; there is nothing to read and nothing to
+ * undo but Cancel. Resolves { symbol, color }, or null.
+ */
+export function openLabelStyle (name, current) {
+  const start = tagStyle(current)
+
+  const swatch = c => `
+    <button type="button" data-color="${c}" title="${c[0].toUpperCase() + c.slice(1)}"
+            aria-pressed="${c === start.color}" style="--sw: var(--tag-${c})"></button>`
+
+  const symbol = sym => `
+    <button type="button" data-symbol="${sym}" title="${sym}"
+            aria-pressed="${sym === start.symbol}">${icon(sym)}</button>`
+
+  return modal({
+    title: 'Customize Label',
+    width: 400,
+    body: `
+      <div class="tag-preview" data-role="preview" data-tag="${start.color}">
+        ${icon(start.symbol)}<span class="lbl">${fmt.esc(name)}</span>
+      </div>
+      <div class="tag-heading">Color</div>
+      <div class="tag-colors" data-role="colors">${TAG_COLORS.map(swatch).join('')}</div>
+      <div class="tag-heading">Symbol</div>
+      <div class="tag-symbols" data-role="symbols">${TAG_SYMBOLS.map(symbol).join('')}</div>`,
+    onMount: box => {
+      const preview = box.querySelector('[data-role="preview"]')
+      const pick = (group, attr, apply) => {
+        box.querySelector(`[data-role="${group}"]`).addEventListener('click', e => {
+          const btn = e.target.closest(`[data-${attr}]`)
+          if (!btn) return
+          for (const b of box.querySelectorAll(`[data-role="${group}"] [data-${attr}]`)) {
+            b.setAttribute('aria-pressed', String(b === btn))
+          }
+          apply(btn.dataset[attr])
+        })
+      }
+      pick('colors', 'color', c => { preview.dataset.tag = c })
+      pick('symbols', 'symbol', sym => {
+        preview.querySelector('svg').outerHTML = icon(sym)
+      })
+    },
+    onOk: box => ({
+      color: box.querySelector('[data-role="colors"] [aria-pressed="true"]').dataset.color,
+      symbol: box.querySelector('[data-role="symbols"] [aria-pressed="true"]').dataset.symbol
+    })
+  })
 }
 
 /* ══════════════════════════════════════════════════════════ Create Torrent */
