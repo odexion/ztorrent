@@ -35,6 +35,12 @@
   --sel-ink:          var(--ink);
   --sel-blur:         rgba(0, 0, 0, .05);
   --sel-blur-ink:     var(--ink);
+  /* The blue above belongs to the torrent list, where selection says "these
+     are the torrents the toolbar will act on". Choosing a category, or a row
+     in a detail table, only changes what you are looking at, so those take a
+     chromaless tint instead: one blue selection in the window, and nothing
+     competing with the category icons or the colours inside a table row. */
+  --sel-quiet:        rgba(0, 0, 0, .10);
 
   /* Progress: Radix Colors step 9, the step that system specifies for solid
      backgrounds -- the purest point of each scale, tuned to carry white text.
@@ -126,6 +132,7 @@
   --sel:              rgba(75, 144, 255, .20);
   --sel-ink:          var(--ink);
   --sel-blur:         rgba(255, 255, 255, .07);
+  --sel-quiet:        rgba(255, 255, 255, .11);
 
   --bar-track:        rgba(255, 255, 255, .10);
   --bar:              #0091ff;
@@ -322,7 +329,7 @@ html, body {
    standing in it. Same for a label lit up as a drop target below. */
 .tree-item.selected {
   color: var(--ink);
-  background: var(--sel);
+  background: var(--sel-quiet);
   font-weight: 500;
 }
 
@@ -695,7 +702,7 @@ html, body {
 }
 .tab svg { width: 15px; height: 15px; }
 .tab:hover { color: var(--ink); background: var(--hover); }
-.tab.active { color: var(--accent); background: var(--accent-soft); }
+.tab.active { color: var(--ink); background: var(--sel-quiet); }
 
 .tabpanes { flex: 1; min-height: 0; position: relative; }
 .tabpane {
@@ -771,7 +778,7 @@ html, body {
   text-overflow: ellipsis;
 }
 .dtable tbody tr:hover { background: var(--hover); }
-.dtable tbody tr.selected { background: var(--sel); }
+.dtable tbody tr.selected { background: var(--sel-quiet); }
 .dtable .ok  { color: var(--ok); }
 .dtable .bad { color: var(--err); }
 .dtable .dim { color: var(--ink-faint); }
@@ -846,6 +853,32 @@ html, body {
 #statusbar svg { width: 13px; height: 13px; }
 #statusbar .sb.clickable:hover { background: var(--hover); color: var(--ink); }
 .sb .k { color: var(--ink-faint); }
+
+/* The update pill. It is the one thing in the status bar that asks for
+   attention rather than just reporting, so it is the one thing allowed to
+   carry the accent -- and only once the build is staged and the restart is
+   genuinely one click away. While it is still working it stays as quiet as
+   its neighbours. */
+#sb-update { gap: 7px; }
+#sb-update[data-act=""] { cursor: default; }
+#sb-update:not([data-act=""]) { cursor: pointer; }
+#sb-update.ready {
+  color: var(--accent);
+  background: var(--accent-soft);
+  font-weight: 500;
+}
+#sb-update.ready:hover { color: var(--accent); background: var(--accent-soft); filter: brightness(1.08); }
+#sb-update.busy { color: var(--ink-dim); }
+#sb-update.busy svg { animation: sb-pulse 1.6s ease-in-out infinite; }
+
+@keyframes sb-pulse {
+  0%, 100% { opacity: .35; }
+  50%      { opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #sb-update.busy svg { animation: none; opacity: .6; }
+}
 .dot.green  { background: var(--ok); }
 .dot.yellow { background: var(--warn); }
 .dot.red    { background: var(--err); }
@@ -881,6 +914,7 @@ html, body {
   color: var(--ink);
 }
 .modal-body { padding: 16px 20px; overflow: auto; flex: 1; min-height: 0; }
+.confirm { font-size: 13px; line-height: 1.55; color: var(--ink-dim); }
 .modal-foot {
   display: flex;
   align-items: center;
@@ -983,7 +1017,7 @@ button:focus-visible { box-shadow: 0 0 0 3px var(--accent-soft); outline: none; 
 }
 .prefs-nav .pn svg { width: 16px; height: 16px; color: var(--ink-dim); }
 .prefs-nav .pn:hover { background: var(--hover); }
-.prefs-nav .pn.active { background: var(--sel); font-weight: 500; }
+.prefs-nav .pn.active { background: var(--sel-quiet); font-weight: 500; }
 .prefs-nav .pn.active svg { color: var(--accent); }
 
 .prefs-page { display: none; }
