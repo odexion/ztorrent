@@ -56,6 +56,7 @@ resume by themselves when you reopen the app, so it's safe to quit partway throu
 |---|---|
 | Space | Pause or resume whatever is selected |
 | ⌘F / Ctrl+F | Search your list |
+| ⌘L / Ctrl+L | Switch between light and dark |
 | Right-click a torrent | Open the folder, copy the magnet link, remove it |
 | Bottom of the window | Your current download and upload speeds |
 

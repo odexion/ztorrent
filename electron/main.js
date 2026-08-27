@@ -568,8 +568,14 @@ function buildMenu () {
         {
           label: 'Appearance',
           submenu: [
-            { label: 'Light', type: 'radio', checked: store.settings.theme === 'classic', click: () => setTheme('classic') },
-            { label: 'Dark', type: 'radio', checked: store.settings.theme === 'graphite', click: () => setTheme('graphite') }
+            { id: 'theme-light', label: 'Light', type: 'radio', checked: store.settings.theme === 'classic', click: () => setTheme('classic') },
+            { id: 'theme-dark', label: 'Dark', type: 'radio', checked: store.settings.theme === 'graphite', click: () => setTheme('graphite') },
+            { type: 'separator' },
+            {
+              label: 'Toggle Light/Dark',
+              accelerator: 'CmdOrCtrl+L',
+              click: () => setTheme(store.settings.theme === 'graphite' ? 'classic' : 'graphite')
+            }
           ]
         },
         { type: 'separator' },
@@ -606,6 +612,14 @@ function applyNativeTheme (theme) {
   const dark = theme === 'graphite'
   nativeTheme.themeSource = dark ? 'dark' : 'light'
   win?.setBackgroundColor(dark ? '#1b1d21' : '#ffffff')
+  // The radios were checked when the menu was built, so however the theme
+  // changed -- the toggle, Preferences -- move the tick to match. Rebuilding
+  // the menu instead would reset the View checkboxes, which are not tracked.
+  const menu = Menu.getApplicationMenu()
+  const light = menu?.getMenuItemById('theme-light')
+  if (light) light.checked = !dark
+  const darkItem = menu?.getMenuItemById('theme-dark')
+  if (darkItem) darkItem.checked = dark
 }
 
 function showAbout () {
