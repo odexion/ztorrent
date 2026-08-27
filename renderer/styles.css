@@ -60,6 +60,19 @@
   --down:             #2f7bf6;
   --up:               #22a06b;
 
+  /* Sidebar category icons. Each state wears the colour it already wears
+     everywhere else -- a downloading torrent's bar, the status bar's down
+     arrow -- so the sidebar reads as a key to the list rather than as
+     decoration. These are aliases on purpose: the mapping lives in one place
+     and follows the semantic colours through both themes. Rows that are
+     structure rather than state (Torrents, the labels) stay ink: they hold
+     every state at once, so no single colour is theirs to wear. */
+  --ic-downloading:   var(--down);
+  --ic-seeding:       var(--up);
+  --ic-completed:     var(--fin);
+  --ic-active:        var(--warn);
+  --ic-inactive:      var(--bar-idle);
+
   /* Area fills under the speed graph's two series */
   --chart-down-fill:  rgba(47, 123, 246, .16);
   --chart-up-fill:    rgba(34, 160, 107, .16);
@@ -257,6 +270,11 @@ html, body {
   color: var(--ink-faint);
 }
 .tree-item svg { width: 16px; height: 16px; flex-shrink: 0; color: var(--ink-dim); }
+.tree-item[data-cat="downloading"] svg { color: var(--ic-downloading); }
+.tree-item[data-cat="seeding"]     svg { color: var(--ic-seeding); }
+.tree-item[data-cat="completed"]   svg { color: var(--ic-completed); }
+.tree-item[data-cat="active"]      svg { color: var(--ic-active); }
+.tree-item[data-cat="inactive"]    svg { color: var(--ic-inactive); }
 .tree-item .lbl { flex: 1; overflow: hidden; text-overflow: ellipsis; }
 .tree-item .cnt {
   color: var(--ink-faint);
@@ -265,12 +283,14 @@ html, body {
 }
 .tree-item.child { padding-left: 16px; }
 .tree-item:hover { background: var(--hover); }
+/* Selection tints the row and weights the text; it deliberately leaves the
+   icon alone, so a category keeps the same colour whether or not you are
+   standing in it. Same for a label lit up as a drop target below. */
 .tree-item.selected {
   color: var(--ink);
   background: var(--sel);
   font-weight: 500;
 }
-.tree-item.selected svg { color: var(--accent); }
 
 /* "Torrents" heads its group but is still a selectable category. */
 .tree-item.root { font-weight: 500; }
@@ -299,7 +319,6 @@ html, body {
   box-shadow: inset 0 0 0 2px var(--accent);
   color: var(--ink);
 }
-.tree-item.drop-target svg,
 .tree-item.drop-target .cnt { color: var(--accent); }
 
 
