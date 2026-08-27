@@ -1027,6 +1027,9 @@ function wireEvents () {
     if (e.key === 'Escape') { e.target.value = ''; S.search = ''; renderList(); e.target.blur() }
   })
 
+  // The pill has looked clickable since it was added -- hover state, and a
+  // tooltip saying what it toggles -- but nothing was ever bound to it.
+  $('#sb-alt').addEventListener('click', () => doAction('alt-speed'))
   $('#sb-update').addEventListener('click', onUpdateClick)
 
   $('#sidebar').addEventListener('click', e => {
