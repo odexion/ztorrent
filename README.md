@@ -103,8 +103,8 @@ Developer notes — building, architecture, privacy internals — are in
 
 MIT licensed. Please only share files you have the right to share.
 
-[mac-arm]: https://github.com/odexion/ztorrent/releases/download/v0.2.0/ztorrent-0.2.0-mac-arm64.dmg
-[mac-x64]: https://github.com/odexion/ztorrent/releases/download/v0.2.0/ztorrent-0.2.0-mac-x64.dmg
-[win]: https://github.com/odexion/ztorrent/releases/download/v0.2.0/ztorrent-0.2.0-win-x64.exe
-[linux-appimage]: https://github.com/odexion/ztorrent/releases/download/v0.2.0/ztorrent-0.2.0-linux-x86_64.AppImage
-[linux-deb]: https://github.com/odexion/ztorrent/releases/download/v0.2.0/ztorrent-0.2.0-linux-amd64.deb
+[mac-arm]: https://github.com/odexion/ztorrent/releases/download/v0.2.1/ztorrent-0.2.1-mac-arm64.dmg
+[mac-x64]: https://github.com/odexion/ztorrent/releases/download/v0.2.1/ztorrent-0.2.1-mac-x64.dmg
+[win]: https://github.com/odexion/ztorrent/releases/download/v0.2.1/ztorrent-0.2.1-win-x64.exe
+[linux-appimage]: https://github.com/odexion/ztorrent/releases/download/v0.2.1/ztorrent-0.2.1-linux-x86_64.AppImage
+[linux-deb]: https://github.com/odexion/ztorrent/releases/download/v0.2.1/ztorrent-0.2.1-linux-amd64.deb
