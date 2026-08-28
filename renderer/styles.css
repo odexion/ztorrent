@@ -62,6 +62,12 @@
   --ok:               #1a8a5a;
   --fin:              #6e56cf;
   --warn:             #b07500;
+  --warn-soft:        rgba(176, 117, 0, .13);
+  /* The throttled-window wash. Red rather than the amber it accompanies:
+     amber is a colour this UI already spends inside the window, and a tint
+     laid over everything has to be one nothing else wears. */
+  --alt-wash:         rgba(214, 69, 69, .055);
+  --alt-edge:         rgba(214, 69, 69, .34);
   --err:              #d64545;
   --down:             #2f7bf6;
   --up:               #22a06b;
@@ -147,6 +153,9 @@
   --ok:               #3fc38a;
   --fin:              #9d8cdf;
   --warn:             #e0aa3c;
+  --warn-soft:        rgba(224, 170, 60, .17);
+  --alt-wash:         rgba(240, 104, 95, .075);
+  --alt-edge:         rgba(240, 104, 95, .30);
   --err:              #f0685f;
   --down:             #4b90ff;
   --up:               #3fc38a;
@@ -215,6 +224,19 @@ html, body {
 .tb-btn:not(.disabled):active { background: var(--pressed); }
 .tb-btn.disabled { opacity: .3; pointer-events: none; }
 .tb-btn.active { background: var(--accent-soft); color: var(--accent); }
+
+/* Alternate speed limits are the one toggle whose state has to survive a
+   glance from across the room: when speeds are down, it has to be obvious
+   that you asked for that and the swarm is not to blame. The soft accent
+   above reads as "selected", so this toggle takes amber instead -- the
+   colour already spent on deliberately held back -- and wears it in the
+   toolbar and the status bar at once. */
+.tb-btn[data-act="alt-speed"].active { background: var(--warn-soft); color: var(--warn); }
+.tb-btn[data-act="alt-speed"].active:not(.disabled):hover {
+  background: var(--warn-soft);
+  color: var(--warn);
+  filter: brightness(1.08);
+}
 
 .tb-sep {
   width: 1px;
@@ -854,6 +876,21 @@ html, body {
 #statusbar .sb.clickable:hover { background: var(--hover); color: var(--ink); }
 .sb .k { color: var(--ink-faint); }
 
+/* The throttle pill, and the status bar's half of the amber above. Off, it
+   is as quiet as its neighbours and reads "No limit"; on, it fills amber and
+   names the two rates actually in force. */
+#sb-alt { gap: 7px; }
+#statusbar #sb-alt.on {
+  color: var(--warn);
+  background: var(--warn-soft);
+  font-weight: 500;
+}
+#statusbar #sb-alt.on:hover {
+  color: var(--warn);
+  background: var(--warn-soft);
+  filter: brightness(1.08);
+}
+
 /* The update pill. It is the one thing in the status bar that asks for
    attention rather than just reporting, so it is the one thing allowed to
    carry the accent -- and only once the build is staged and the restart is
@@ -882,6 +919,30 @@ html, body {
 .dot.green  { background: var(--ok); }
 .dot.yellow { background: var(--warn); }
 .dot.red    { background: var(--err); }
+
+/* ============================================================ throttled wash */
+
+/* When alternate limits are on, the whole window goes faintly red and takes a
+   ring at its edge. The toolbar and status bar say which limits are in force;
+   this says only that something is holding the app back, from anywhere on the
+   screen and without having to be read. It sits above the modals on purpose --
+   the state does not pause while a dialog is open -- and stays inert, so every
+   click lands on whatever is underneath it. */
+#alt-wash {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  pointer-events: none;
+  opacity: 0;
+  background: var(--alt-wash);
+  box-shadow: inset 0 0 0 1px var(--alt-edge);
+  transition: opacity .16s ease;
+}
+html.alt-speed #alt-wash { opacity: 1; }
+
+@media (prefers-reduced-motion: reduce) {
+  #alt-wash { transition: none; }
+}
 
 /* ==================================================================== modals */
 

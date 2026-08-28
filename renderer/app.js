@@ -156,7 +156,7 @@ async function init () {
     S.labelStyles = await api.getLabelStyles()
     renderSidebar()
   })
-  api.on('settings-changed', s => { S.settings = s; applyTheme(); renderStatusbar() })
+  api.on('settings-changed', s => { S.settings = s; applyTheme(); renderStatusbar(); renderToolbarState() })
   api.on('menu', onMenu)
   api.on('open-torrent', src => openAddDialog(src))
   api.on('update', state => { S.update = state; renderUpdate() })
@@ -237,6 +237,12 @@ const TOOLBAR_HINTS = {
   preferences: ['Preferences', accel(',')]
 }
 
+/** Both the toolbar button and the status-bar pill say which way the click
+ *  goes, so the state is readable without having to decode the colour. */
+const altSpeedHint = on => on
+  ? `Alternate speed limits are ON -- click for the normal limits  (${accel('L', true)})`
+  : `Alternate Speed Limits  (${accel('L', true)})`
+
 function buildToolbar () {
   for (const btn of document.querySelectorAll('#toolbar .tb-btn')) {
     btn.innerHTML = icon(btn.dataset.act)
@@ -256,7 +262,11 @@ function renderToolbarState () {
       const need = (act === 'queue-up' || act === 'queue-down') ? n === 1 : n > 0
       btn.classList.toggle('disabled', !need)
     }
-    if (act === 'alt-speed') btn.classList.toggle('active', !!S.settings.altSpeedEnabled)
+    if (act === 'alt-speed') {
+      const on = !!S.settings.altSpeedEnabled
+      btn.classList.toggle('active', on)
+      btn.title = altSpeedHint(on)
+    }
   }
 }
 
@@ -504,7 +514,7 @@ function speedCapLabel () {
   const alt = s.altSpeedEnabled
   const dn = alt ? s.altDownloadRate : s.maxDownloadRate
   const up = alt ? s.altUploadRate : s.maxUploadRate
-  if (!dn && !up) return 'No limit'
+  if (!dn && !up) return alt ? 'Alt: no limit' : 'No limit'
   const part = (v, sym) => `${sym}${v > 0 ? v + ' kB/s' : '∞'}`
   return `${alt ? 'Alt' : 'Limit'}: ${part(dn, '↓')} ${part(up, '↑')}`
 }
@@ -520,7 +530,12 @@ function renderStatusbar () {
   $('#sb-count').innerHTML =
     `<span class="k">Torrents:</span><span>${S.rows.length}</span>`
 
-  $('#sb-alt').innerHTML = `${icon('alt-speed')}<span>${speedCapLabel()}</span>`
+  const altOn = !!S.settings.altSpeedEnabled
+  const altEl = $('#sb-alt')
+  altEl.innerHTML = `${icon('alt-speed')}<span>${speedCapLabel()}</span>`
+  altEl.classList.toggle('on', altOn)
+  altEl.title = altSpeedHint(altOn)
+  document.documentElement.classList.toggle('alt-speed', altOn)
 
   $('#sb-down').innerHTML =
     `<span style="color:var(--down)">${icon('down')}</span>` +

@@ -584,8 +584,8 @@ export async function openPreferences (settings, apply) {
             ${num('maxUploadRate', 'Maximum upload rate:', 'kB/s  (0 = unlimited)')}
           </fieldset>
           <fieldset><legend>Alternate rate limits</legend>
-            ${num('altDownloadRate', 'Alternate download rate:', 'kB/s')}
-            ${num('altUploadRate', 'Alternate upload rate:', 'kB/s')}
+            ${num('altDownloadRate', 'Alternate download rate:', 'kB/s  (0 = unlimited)')}
+            ${num('altUploadRate', 'Alternate upload rate:', 'kB/s  (0 = unlimited)')}
             <div class="frow wide">${ck('altSpeedEnabled', 'Use alternate limits now')}</div>
           </fieldset>
           <fieldset><legend>Number of connections</legend>
