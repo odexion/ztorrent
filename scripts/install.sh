@@ -461,7 +461,9 @@ install_mac() {
 
   # curl does not set the quarantine flag, but a re-run over a previously
   # quarantined copy might inherit one, and these builds are unsigned.
-  xattr -dr com.apple.quarantine "$app" 2>/dev/null || true
+  # By full path: an xattr earlier on PATH need not be Apple's -- the PyPI
+  # package of that name installs one that does not take these arguments.
+  /usr/bin/xattr -dr com.apple.quarantine "$app" 2>/dev/null || true
 
   spin_ok "installed to $C_BOLD$app$C_RESET"
   say ""

@@ -438,7 +438,7 @@ export class Updater extends EventEmitter {
 backup=${q(target)}.old.$$
 if mv ${q(target)} "$backup" 2>/dev/null; then
   if ditto ${q(payload)} ${q(target)}; then
-    xattr -dr com.apple.quarantine ${q(target)} 2>/dev/null || true
+    /usr/bin/xattr -dr com.apple.quarantine ${q(target)} 2>/dev/null || true
     rm -rf "$backup"
   else
     # Put back exactly what was there. A failed update must not cost anyone

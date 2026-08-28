@@ -49,7 +49,7 @@ network and the one step that fails behind a slow or filtered connection.
 
 Builds are unsigned — there is no Developer ID here, so electron-builder skips code
 signing. A locally built `.app` runs fine; one that has been downloaded will need
-`xattr -dr com.apple.quarantine /Applications/ztorrent.app` or a right-click ▸ Open.
+`/usr/bin/xattr -dr com.apple.quarantine /Applications/ztorrent.app` or a right-click ▸ Open.
 Windows SmartScreen will likewise warn about the unsigned installer.
 
 ### Updating in place
