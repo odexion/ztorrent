@@ -89,6 +89,24 @@ jobs:
       # already have a release before this job runs — one made by hand, or by
       # an earlier attempt at this tag — and `gh release create` refuses that,
       # which strands the installers as run artifacts.
+      # Every release opens with the one-line install. Most people arrive at a
+      # release page from a link rather than from the README, and the notes
+      # have to stand on their own for them.
+      - name: Write the install header
+        run: |
+          cat > notes.md <<'EOF'
+          ## Install
+
+          macOS and Linux, in one line:
+
+          ```sh
+          curl -fsSL https://raw.githubusercontent.com/odexion/ztorrent/main/scripts/install.sh | sh
+          ```
+
+          Or take an installer from the assets below — the `.dmg` for macOS,
+          the `.exe` for Windows, the AppImage or `.deb` for Linux.
+          EOF
+
       - name: Publish release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -99,10 +117,21 @@ jobs:
               --repo "$GITHUB_REPOSITORY" \
               --clobber \
               release/*
+            # A release made by hand, or by an earlier attempt, may predate the
+            # header. Put it back without touching whatever else is written.
+            body=$(gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --json body -q .body)
+            case "$body" in
+              *'scripts/install.sh | sh'*)
+                echo 'notes already carry the install line' ;;
+              *)
+                { cat notes.md; printf '\n%s\n' "$body"; } > merged.md
+                gh release edit "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --notes-file merged.md ;;
+            esac
           else
             gh release create "$GITHUB_REF_NAME" \
               --repo "$GITHUB_REPOSITORY" \
               --title "$GITHUB_REF_NAME" \
+              --notes-file notes.md \
               --generate-notes \
               release/*
           fi
