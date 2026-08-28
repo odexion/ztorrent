@@ -61,7 +61,7 @@ export const DEFAULT_SETTINGS = {
   confirmOnDelete: true,
   notifyOnComplete: true,
   showSpeedInDock: true,
-  altSpeedEnabled: false,
+  altSpeedEnabled: false,  // session only -- never restored from disk, see Store._read
   altDownloadRate: 100,
   altUploadRate: 20
 }
@@ -111,6 +111,11 @@ export class Store {
       parsed = {}
     }
     const settings = { ...DEFAULT_SETTINGS, ...(parsed.settings || {}) }
+    // Alternate limits are a "right now" decision, not a preference: you reach
+    // for them because of what the network is doing this afternoon. Every
+    // launch starts at full speed, so a throttle can never be inherited from a
+    // session you have forgotten about. The two rates themselves do persist.
+    settings.altSpeedEnabled = false
     for (const key of SECRET_KEYS) {
       const sealed = settings[`${key}Enc`]
       if (!sealed) continue
@@ -170,16 +175,17 @@ export class Store {
   /** The on-disk shape: secrets sealed, never written under their own name. */
   _serialise () {
     const settings = { ...this.data.settings }
-    let changed = false
+    // Session-only, so it is not written at all rather than written and then
+    // ignored: a file that says `true` forever is a trap for anyone reading it.
+    delete settings.altSpeedEnabled
     for (const key of SECRET_KEYS) {
       const value = settings[key]
       if (!this.secrets) continue          // no codec: leave it as it was
       delete settings[key]
-      changed = true
       if (!value) continue                 // empty, or a sealed value we could not open
       try { settings[`${key}Enc`] = this.secrets.encrypt(value) } catch { /* drop it */ }
     }
-    return changed ? { ...this.data, settings } : this.data
+    return { ...this.data, settings }
   }
 
   flush () {

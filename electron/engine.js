@@ -23,6 +23,21 @@ export const State = {
 const KB = 1024
 
 /**
+ * The two rates actually in force, in bytes/s, ready for WebTorrent's
+ * throttles. Alternate mode swaps in its own pair; a zero on either side means
+ * unlimited, the way it does everywhere else a rate is entered.
+ *
+ * Every place that sets a throttle goes through here, so alternate mode cannot
+ * be forgotten by one of them and quietly undone.
+ */
+function throttleRates (s) {
+  const alt = s.altSpeedEnabled
+  const dn = alt ? s.altDownloadRate : s.maxDownloadRate
+  const up = alt ? s.altUploadRate : s.maxUploadRate
+  return { dn: dn > 0 ? dn * KB : -1, up: up > 0 ? up * KB : -1 }
+}
+
+/**
  * Wraps a WebTorrent client with the bookkeeping a desktop client needs:
  * stable ids that survive restarts, stopped-but-remembered torrents, a
  * download queue, labels, and a serialisable snapshot for the renderer.
@@ -48,6 +63,7 @@ export class Engine extends EventEmitter {
     // client is even allowed to switch on.
     this.egress = egressPolicy(s)
     const egressLabel = useEgress(this.egress)
+    const rates = throttleRates(s)
 
     this.client = new WebTorrent({
       maxConns: s.globalMaxConnections,
@@ -61,8 +77,8 @@ export class Engine extends EventEmitter {
       natUpnp: s.enableUPnP,
       natPmp: s.enableUPnP,
       torrentPort: s.randomizePort ? 0 : s.listenPort,
-      downloadLimit: s.maxDownloadRate > 0 ? s.maxDownloadRate * KB : -1,
-      uploadLimit: s.maxUploadRate > 0 ? s.maxUploadRate * KB : -1,
+      downloadLimit: rates.dn,
+      uploadLimit: rates.up,
       ...guardedOptions(this.egress)
     })
 
@@ -676,8 +692,9 @@ export class Engine extends EventEmitter {
 
   applySettings (settings) {
     if (!this.client) return
-    this.client.throttleDownload(settings.maxDownloadRate > 0 ? settings.maxDownloadRate * KB : -1)
-    this.client.throttleUpload(settings.maxUploadRate > 0 ? settings.maxUploadRate * KB : -1)
+    const { dn, up } = throttleRates(settings)
+    this.client.throttleDownload(dn)
+    this.client.throttleUpload(up)
     this.client.maxConns = settings.globalMaxConnections
     // Read afresh for every outgoing peer, so this one needs no restart.
     this.client.secure = settings.encryption ?? 1
@@ -687,17 +704,10 @@ export class Engine extends EventEmitter {
     this.pumpQueue()
   }
 
+  /** Called after the caller has already flipped the flag in settings. */
   setAltSpeed (on) {
-    const s = this.store.settings
-    if (on) {
-      this.client.throttleDownload(s.altDownloadRate * KB)
-      this.client.throttleUpload(s.altUploadRate * KB)
-      this.log('Alternate speed limits enabled.')
-    } else {
-      this.client.throttleDownload(s.maxDownloadRate > 0 ? s.maxDownloadRate * KB : -1)
-      this.client.throttleUpload(s.maxUploadRate > 0 ? s.maxUploadRate * KB : -1)
-      this.log('Alternate speed limits disabled.')
-    }
+    this.applySettings(this.store.settings)
+    this.log(on ? 'Alternate speed limits enabled.' : 'Alternate speed limits disabled.')
   }
 
   // ------------------------------------------------------------- snapshots

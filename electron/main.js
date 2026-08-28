@@ -237,6 +237,7 @@ ipcMain.handle('settings:set', (_e, patch) => {
       : 'Proxy and interface binding turned off. They stay in force until ztorrent restarts.')
   }
   engine.applySettings(next)
+  if (patch.altSpeedEnabled !== undefined) syncAltSpeedMenu()
   if (patch.theme) applyNativeTheme(next.theme)
   if (patch.autoUpdate !== undefined && app.isPackaged) {
     next.autoUpdate ? updater.start() : updater.stop()
@@ -321,6 +322,7 @@ ipcMain.handle('cmd:altSpeed', () => {
   const on = !store.settings.altSpeedEnabled
   store.patchSettings({ altSpeedEnabled: on })
   engine.setAltSpeed(on)
+  syncAltSpeedMenu()
   return on
 })
 
@@ -606,6 +608,7 @@ function buildMenu () {
       submenu: [
         {
           label: 'Alternate Speed Limits',
+          id: 'alt-speed',
           type: 'checkbox',
           accelerator: 'CmdOrCtrl+Shift+L',
           checked: store.settings.altSpeedEnabled,
@@ -658,6 +661,16 @@ function buildMenu () {
     }
   ]
   Menu.setApplicationMenu(Menu.buildFromTemplate(template))
+}
+
+/**
+ * Keep the Options menu's checkbox honest. The same switch is reachable from
+ * the toolbar, the status bar and Preferences, and a checkbox that disagrees
+ * with the window is worse than no checkbox at all.
+ */
+function syncAltSpeedMenu () {
+  const item = Menu.getApplicationMenu()?.getMenuItemById('alt-speed')
+  if (item) item.checked = !!store.settings.altSpeedEnabled
 }
 
 /** Menu entry point; the renderer reaches the same check over IPC. */
