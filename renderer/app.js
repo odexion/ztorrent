@@ -174,7 +174,9 @@ function applyTheme () {
 function onTick ({ rows, globals, details }) {
   S.rows = rows
   S.globals = globals
-  S.details = details
+  // A tick in flight while the selection moves still carries the old torrent's
+  // detail; showing it would paint one torrent's pieces under another's name.
+  if (!details || !S.selection.size || S.selection.has(details.id)) S.details = details
 
   pushHistory(S.globalHistory, globals.downloadSpeed, globals.uploadSpeed)
   for (const r of rows) {
@@ -694,7 +696,7 @@ function renderGeneral () {
           <dt>Added On:</dt><dd>${fmt.datetime(r.addedOn)}</dd>
           <dt>Completed On:</dt><dd>${r.completedOn ? fmt.datetime(r.completedOn) : '—'}</dd>
           <dt>Private:</dt><dd>${d ? (d.private ? 'Yes (DHT/PEX off)' : 'No') : '—'}</dd>
-          <dt>Order:</dt><dd>${d?.sequential ? 'Sequential' : 'Rarest first'}</dd>
+          <dt>Order:</dt><dd>${d ? (d.sequential ? 'Sequential' : 'Rarest first') : '—'}</dd>
         </dl>
       </div>
     </div>`
@@ -702,8 +704,10 @@ function renderGeneral () {
 
 function renderTrackers () {
   const el = $('#pane-trackers')
-  const d = S.details
-  if (!d) return emptyPane(el)
+  const r = selectedRow()
+  if (!r) return emptyPane(el)
+  const d = S.details && S.details.id === r.id ? S.details : null
+  if (!d) return
   const rows = d.trackers.map(t => `
     <tr data-url="${fmt.esc(t.url)}">
       <td title="${fmt.esc(t.url)}">${fmt.esc(t.url)}</td>
@@ -720,8 +724,10 @@ function renderTrackers () {
 
 function renderPeers () {
   const el = $('#pane-peers')
-  const d = S.details
-  if (!d) return emptyPane(el)
+  const r = selectedRow()
+  if (!r) return emptyPane(el)
+  const d = S.details && S.details.id === r.id ? S.details : null
+  if (!d) return
   const rows = d.peers
     .sort((a, b) => (b.downSpeed + b.upSpeed) - (a.downSpeed + a.upSpeed))
     .map(p => `
@@ -747,8 +753,9 @@ function renderPeers () {
 let piecesCanvas = null
 function renderPieces () {
   const el = $('#pane-pieces')
-  const d = S.details
-  if (!d) return emptyPane(el)
+  const r = selectedRow()
+  if (!r) return emptyPane(el)
+  const d = S.details && S.details.id === r.id ? S.details : null
 
   if (!el.querySelector('canvas')) {
     el.innerHTML = `<div class="canvas-pane">
@@ -763,7 +770,11 @@ function renderPieces () {
     piecesCanvas = el.querySelector('#pieces-canvas')
   }
   const stat = el.querySelector('#pieces-stat')
-  if (!d.pieces) { stat.textContent = 'Waiting for metadata…'; return }
+  if (!d?.pieces) {
+    stat.textContent = d ? 'Waiting for metadata…' : ''
+    clearCanvas(piecesCanvas)
+    return
+  }
 
   const map = base64Bytes(d.pieces)
   stat.innerHTML = `<b>${d.have}</b> of <b>${map.length}</b> pieces · ${fmt.bytes(d.pieceLength)} each`
@@ -775,6 +786,15 @@ function base64Bytes (b64) {
   const out = new Uint8Array(bin.length)
   for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i)
   return out
+}
+
+/** Blanks the canvas, so a map never outlives the torrent it belongs to. */
+function clearCanvas (canvas) {
+  if (!canvas?.clientWidth) return
+  const ctx = canvas.getContext('2d')
+  ctx.setTransform(1, 0, 0, 1, 0, 0)
+  ctx.fillStyle = cssVar('--bg')
+  ctx.fillRect(0, 0, canvas.width, canvas.height)
 }
 
 function drawPieces (canvas, map) {
@@ -818,8 +838,12 @@ function drawPieces (canvas, map) {
 
 function renderFiles () {
   const el = $('#pane-files')
-  const d = S.details
-  if (!d) return emptyPane(el)
+  const r = selectedRow()
+  if (!r) return emptyPane(el)
+  // Details for a freshly selected row are an IPC hop away; leave the pane
+  // alone rather than filling it with the torrent that was selected before.
+  const d = S.details && S.details.id === r.id ? S.details : null
+  if (!d) return
   if (!d.files.length || d.files[0].name === undefined) {
     return emptyPane(el, 'File list appears once the torrent metadata arrives.')
   }
@@ -950,7 +974,12 @@ function renderLogger () {
 function syncSelection () {
   for (const [id, entry] of rowEls) entry.el.classList.toggle('selected', S.selection.has(id))
   const first = [...S.selection][0] || null
-  api.getDetails(first).then(d => { S.details = d; renderDetail() })
+  renderDetail()
+  api.getDetails(first).then(d => {
+    if ([...S.selection][0] !== first) return    // the selection moved on again
+    S.details = d
+    renderDetail()
+  })
   renderToolbarState()
 }
 
@@ -1020,7 +1049,12 @@ async function doAction (act, arg) {
       if (dest) await api.saveTorrentFile(r.id, dest)
       break
     }
-    case 'properties': if (sel.length === 1) openProperties(S.rows.find(x => x.id === sel[0]), S.details); break
+    case 'properties': {
+      if (sel.length !== 1) break
+      const row = S.rows.find(x => x.id === sel[0])
+      openProperties(row, S.details?.id === sel[0] ? S.details : null)
+      break
+    }
     case 'toggle-sequential': {
       const r = S.rows.find(x => x.id === sel[0])
       if (r) await api.setSequential(r.id, !r.sequential)
