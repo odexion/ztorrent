@@ -78,7 +78,8 @@
             ],
             "CFBundleTypeExtensions": [
               "torrent"
-            ]
+            ],
+            "CFBundleTypeIconFile": "icon.icns"
           }
         ],
         "CFBundleURLTypes": [
