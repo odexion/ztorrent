@@ -106,6 +106,13 @@ export function openConfirm (title, message, okLabel = 'OK') {
 /* ════════════════════════════════════════════════════════════ Add Torrent */
 
 /**
+ * The label dropdown's last entry is "New label…", which reveals a text box
+ * rather than standing for a label of its own. Matched by position so a label
+ * really named "New label…" still picks itself.
+ */
+const isNewLabel = pick => pick.selectedIndex === pick.options.length - 1
+
+/**
  * The "Add New Torrent" sheet: destination, contents, and start options.
  * `defaultPath` overrides the offered folder for this sheet only; without one
  * we offer wherever the last torrent went, falling back to the default folder.
@@ -150,8 +157,12 @@ export async function openAddDialog (source, defaultPath = '') {
       <div class="frow">
         <label>Label:</label>
         <div class="inline">
-          <input type="text" data-role="label" list="label-list" placeholder="(none)" style="width:170px">
-          <datalist id="label-list">${labels.map(l => `<option value="${fmt.esc(l)}">`).join('')}</datalist>
+          <select data-role="label-pick" style="width:170px">
+            <option value="">(none)</option>
+            ${labels.map(l => `<option value="${fmt.esc(l)}">${fmt.esc(l)}</option>`).join('')}
+            <option value="">New label…</option>
+          </select>
+          <input type="text" data-role="label-new" placeholder="Label name" style="width:170px" hidden>
         </div>
       </div>
     </fieldset>
@@ -197,6 +208,14 @@ export async function openAddDialog (source, defaultPath = '') {
     okLabel: 'OK',
     body,
     onMount: box => {
+      const pick = box.querySelector('[data-role="label-pick"]')
+      const fresh = box.querySelector('[data-role="label-new"]')
+      pick.onchange = () => {
+        fresh.hidden = !isNewLabel(pick)
+        if (fresh.hidden) fresh.value = ''
+        else fresh.focus()
+      }
+
       box.querySelector('[data-role="browse"]').onclick = async () => {
         const dir = await api.chooseFolder('Choose Download Folder')
         if (dir) box.querySelector('[data-role="path"]').value = dir
@@ -219,7 +238,10 @@ export async function openAddDialog (source, defaultPath = '') {
       if (!savePath) throw new Error('Choose a download folder.')
       const start = box.querySelector('[data-role="start"]').checked
       const sequential = box.querySelector('[data-role="seq"]').checked
-      const label = box.querySelector('[data-role="label"]').value.trim()
+      const pick = box.querySelector('[data-role="label-pick"]')
+      const label = (isNewLabel(pick)
+        ? box.querySelector('[data-role="label-new"]').value
+        : pick.value).trim()
 
       const priorities = {}
       let wanted = null

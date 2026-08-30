@@ -266,6 +266,7 @@ export class Engine extends EventEmitter {
     }
 
     this.records.set(record.id, record)
+    this._rememberLabel(record.label)
     this.log(`Added "${record.name}".`)
 
     if (record.wantStart) this.pumpQueue()
@@ -586,11 +587,21 @@ export class Engine extends EventEmitter {
     const r = this.records.get(id)
     if (!r) return
     r.label = label
-    const labels = new Set(this.store.data.labels || [])
-    if (label) labels.add(label)
-    this.store.set('labels', [...labels])
+    this._rememberLabel(label)
     this.persist()
     this.emit('changed')
+  }
+
+  /**
+   * Keeps the sidebar's label list in step with the labels actually in use, so
+   * a label invented in the Add sheet is offered the next time round.
+   */
+  _rememberLabel (label) {
+    if (!label) return
+    const labels = new Set(this.store.data.labels || [])
+    if (labels.has(label)) return
+    labels.add(label)
+    this.store.set('labels', [...labels])
   }
 
   setSequential (id, on) {
