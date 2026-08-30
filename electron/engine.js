@@ -150,6 +150,13 @@ export class Engine extends EventEmitter {
         wanted: entry.wanted || null,             // array of wanted file indices
         priorities: entry.priorities || {},       // fileIndex -> 0|1|2 (skip/normal/high)
         sequential: !!entry.sequential,
+        pieceLength: entry.pieceLength || 0,
+        pieceCount: entry.pieceCount || 0,
+        bitfield: entry.bitfield || null,        // base64 packed bits, one per piece
+        files: Array.isArray(entry.files) ? entry.files : null,
+        announce: Array.isArray(entry.announce) ? entry.announce : null,
+        webSeeds: Array.isArray(entry.webSeeds) ? entry.webSeeds : null,
+        meta: entry.meta || null,                // comment/creator/private, from the .torrent
         state: entry.state === State.STOPPED ? State.STOPPED : entry.state,
         wantStart: entry.state !== State.STOPPED && entry.state !== State.PAUSED,
         progress: entry.progress || 0,
@@ -166,6 +173,7 @@ export class Engine extends EventEmitter {
   }
 
   persist () {
+    for (const r of this.records.values()) this._snapshot(r)
     const rows = [...this.records.values()].map(r => ({
       id: r.id,
       infoHash: r.infoHash,
@@ -183,10 +191,53 @@ export class Engine extends EventEmitter {
       wanted: r.wanted,
       priorities: r.priorities,
       sequential: r.sequential,
+      pieceLength: r.pieceLength || 0,
+      pieceCount: r.pieceCount || 0,
+      bitfield: r.bitfield || null,
+      files: r.files || null,
+      announce: r.announce || null,
+      webSeeds: r.webSeeds || null,
+      meta: r.meta || null,
       progress: r.torrent ? r.torrent.progress : r.progress,
       state: r.state
     }))
     this.store.set('torrents', rows)
+  }
+
+  /**
+   * Copies what only a live torrent knows -- its piece bitfield and its file
+   * list -- onto the record. Without this the Pieces and Files tabs have
+   * nothing to show the moment the swarm goes away, whether that is stopping a
+   * torrent or simply reopening the app, even though the data is all still
+   * sitting on disk.
+   */
+  _snapshot (r) {
+    const t = r.torrent
+    if (!t) return
+    if (t.bitfield?.buffer && t.pieces?.length) {
+      r.pieceCount = t.pieces.length
+      r.pieceLength = t.pieceLength || r.pieceLength || 0
+      r.bitfield = Buffer.from(t.bitfield.buffer).toString('base64')
+    }
+    if (t.files?.length) {
+      r.files = t.files.map(f => ({
+        name: f.name,
+        path: f.path,
+        length: f.length,
+        downloaded: f.downloaded,
+        progress: f.progress
+      }))
+    }
+    if (t.announce?.length) r.announce = [...t.announce]
+    if (t.urlList?.length) r.webSeeds = [...t.urlList]
+    if (t.ready || t.metadata) {
+      r.meta = {
+        comment: t.comment || '',
+        createdBy: t.createdBy || '',
+        createdOn: t.created ? new Date(t.created).getTime() : 0,
+        private: !!t.private
+      }
+    }
   }
 
   // ---------------------------------------------------------------- adding
@@ -258,6 +309,13 @@ export class Engine extends EventEmitter {
       wanted: opts.wanted || null,
       priorities: opts.priorities || {},
       sequential: opts.sequential ?? settings.sequentialDownload,
+      pieceLength: 0,
+      pieceCount: 0,
+      bitfield: null,
+      files: null,
+      announce: null,
+      webSeeds: null,
+      meta: null,
       state: State.QUEUED,
       wantStart: opts.paused ? false : settings.startTorrentsAutomatically,
       progress: 0,
@@ -505,6 +563,7 @@ export class Engine extends EventEmitter {
     if (!r) return
     r.wantStart = false
     if (r.torrent) {
+      this._snapshot(r)
       r.progress = r.torrent.progress
       r.uploadedBase += r.torrent.uploaded
       r.downloadedBase = r.torrent.downloaded
@@ -732,8 +791,9 @@ export class Engine extends EventEmitter {
       const uploaded = r.uploadedBase + (t ? t.uploaded : 0)
       const downloaded = t ? t.downloaded : r.downloadedBase
       const length = t?.length || r.length
-      const wantedLength = t
-        ? t.files.reduce((sum, f, i) => sum + ((r.priorities[i] ?? 1) === 0 ? 0 : f.length), 0)
+      const files = t?.files || r.files
+      const wantedLength = files?.length
+        ? files.reduce((sum, f, i) => sum + ((r.priorities[i] ?? 1) === 0 ? 0 : f.length), 0)
         : length
 
       let state = r.state
@@ -788,21 +848,29 @@ export class Engine extends EventEmitter {
       name: r.name,
       infoHash: r.infoHash || '',
       savePath: r.savePath,
-      comment: t?.comment || '',
-      createdBy: t?.createdBy || '',
-      createdOn: t?.created ? new Date(t.created).getTime() : 0,
-      pieceLength: t?.pieceLength || 0,
-      pieceCount: t?.pieces?.length || 0,
-      private: !!t?.private,
+      comment: t?.comment || r.meta?.comment || '',
+      createdBy: t?.createdBy || r.meta?.createdBy || '',
+      createdOn: t?.created ? new Date(t.created).getTime() : (r.meta?.createdOn || 0),
+      pieceLength: t?.pieceLength || r.pieceLength || 0,
+      pieceCount: t?.pieces?.length || r.pieceCount || 0,
+      private: t ? !!t.private : !!r.meta?.private,
       sequential: r.sequential,
       trackers: [],
       peers: [],
       files: [],
-      pieces: null,
-      have: 0
+      ...this._pieceMap(r)
     }
     if (!t) {
-      base.files = (r.wanted || []).map(i => ({ index: i }))
+      base.files = r.files?.length
+        ? r.files.map((f, i) => ({ ...f, index: i, priority: r.priorities[i] ?? 1 }))
+        : (r.wanted || []).map(i => ({ index: i }))
+      // The URLs are known even with the swarm down; only their state is not.
+      base.trackers = (r.announce || []).map(url => (
+        { url, status: 'Not contacted yet', seeds: -1, peers: -1, interval: 0 }
+      ))
+      for (const url of r.webSeeds || []) {
+        base.trackers.push({ url, status: 'Web Seed', seeds: -1, peers: -1, interval: 0 })
+      }
       return base
     }
 
@@ -867,19 +935,32 @@ export class Engine extends EventEmitter {
       })
     })
 
-    // Piece map, packed as one byte per piece so the renderer can draw it cheaply.
-    if (t.bitfield && t.pieces) {
-      const n = t.pieces.length
-      const map = new Uint8Array(n)
-      let have = 0
-      for (let i = 0; i < n; i++) {
-        if (t.bitfield.get(i)) { map[i] = 2; have++ }
-        else if (t.pieces[i] && t.pieces[i].missing < t.pieces[i].length) map[i] = 1
-      }
-      base.pieces = Buffer.from(map).toString('base64')
-      base.have = have
-    }
     return base
+  }
+
+  /**
+   * The piece map the renderer draws, one byte per piece: 2 have, 1 partly
+   * here, 0 missing. A live torrent knows both; a stopped or just-restored one
+   * falls back to the bitfield saved with the record, which has no notion of a
+   * piece in flight -- nothing is in flight while it is not running.
+   */
+  _pieceMap (r) {
+    const t = r.torrent
+    const n = t?.pieces?.length || (r.bitfield ? r.pieceCount : 0)
+    if (!n) return { pieces: null, have: 0 }
+
+    const bits = t?.bitfield ? null : Buffer.from(r.bitfield, 'base64')
+    const has = i => bits
+      ? !!(bits[i >> 3] & (0b1000_0000 >> (i % 8)))
+      : t.bitfield.get(i)
+
+    const map = new Uint8Array(n)
+    let have = 0
+    for (let i = 0; i < n; i++) {
+      if (has(i)) { map[i] = 2; have++ }
+      else if (t?.pieces?.[i] && t.pieces[i].missing < t.pieces[i].length) map[i] = 1
+    }
+    return { pieces: Buffer.from(map).toString('base64'), have }
   }
 
   globals () {
