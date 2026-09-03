@@ -1,7 +1,7 @@
 {
   "name": "ztorrent",
   "productName": "ztorrent",
-  "version": "0.3.1",
+  "version": "0.4.0",
   "description": "A BitTorrent client for macOS, Windows and Linux",
   "type": "module",
   "main": "electron/main.js",
