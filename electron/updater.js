@@ -26,6 +26,7 @@ import os from 'node:os'
 const REPO = 'odexion/ztorrent'
 const CHECK_EVERY = 6 * 60 * 60 * 1000   // six hours
 const FIRST_CHECK_AFTER = 20 * 1000      // let the app finish starting first
+const CHECK_TIMEOUT = 15 * 1000          // a stalled check is a failed check
 
 /** 'idle' | 'checking' | 'available' | 'downloading' | 'staging' | 'ready' | 'error' */
 export const UpdateState = {
@@ -106,6 +107,12 @@ export class Updater extends EventEmitter {
       received: 0,
       file: null,
       error: null,
+      // Which step the error came from: a check nobody asked for has nothing to
+      // report, while a download that died left work the user started unfinished.
+      errorFrom: null,
+      // Whether the user asked for this check. The automatic one works in
+      // silence; only a check someone started reports what it is doing.
+      manual: false,
       // Linux outside an AppImage, or any platform with no matching artifact:
       // the release is still worth telling the user about, but this process
       // cannot install it.
@@ -170,11 +177,18 @@ export class Updater extends EventEmitter {
   // ------------------------------------------------------------------ check
 
   async _api (url) {
+    // Nothing here gives up on its own: a connection that stalls rather than
+    // refuses -- a captive portal, a route that went away -- leaves this fetch
+    // pending for as long as the app runs, and the check pinned in whatever it
+    // was doing. A stalled check is a failed check.
     const res = await net.fetch(url, {
+      signal: AbortSignal.timeout(CHECK_TIMEOUT),
       headers: {
         'User-Agent': `ztorrent/${this.current}`,
         Accept: 'application/vnd.github+json'
       }
+    }).catch(err => {
+      throw err?.name === 'TimeoutError' ? new Error('GitHub did not answer') : err
     })
     if (!res.ok) throw new Error(`GitHub returned ${res.status}`)
     return res.json()
@@ -189,6 +203,10 @@ export class Updater extends EventEmitter {
     if (this.status.state === UpdateState.DOWNLOADING ||
         this.status.state === UpdateState.STAGING) return this.state()
 
+    // A check is already running -- the six-hourly tick arriving on top of one
+    // that has not answered yet. Only someone asking starts a second.
+    if (this.status.state === UpdateState.CHECKING && !manual) return this.state()
+
     // Already holding a build that is ready to go: nothing to look for.
     if (this.status.state === UpdateState.READY && !manual) return this.state()
 
@@ -197,7 +215,7 @@ export class Updater extends EventEmitter {
       ? { version: this.status.version, file: this.status.file }
       : null
 
-    this._set({ state: UpdateState.CHECKING, error: null })
+    this._set({ state: UpdateState.CHECKING, error: null, errorFrom: null, manual })
     try {
       const feed = process.env.ZTORRENT_UPDATE_FEED ||
         `https://api.github.com/repos/${this.repo}/releases/latest`
@@ -250,10 +268,11 @@ export class Updater extends EventEmitter {
           state: UpdateState.READY,
           version: staged.version,
           file: staged.file,
-          error: err.message
+          error: err.message,
+          errorFrom: 'check'
         })
       } else {
-        this._set({ state: UpdateState.ERROR, error: err.message })
+        this._set({ state: UpdateState.ERROR, error: err.message, errorFrom: 'check' })
       }
       return this.state()
     }
@@ -271,7 +290,7 @@ export class Updater extends EventEmitter {
     const part = path.join(this.dir, `${name}.part`)
     const dest = path.join(this.dir, name)
 
-    this._set({ state: UpdateState.DOWNLOADING, received: 0, error: null })
+    this._set({ state: UpdateState.DOWNLOADING, received: 0, error: null, errorFrom: null })
     try {
       const res = await net.fetch(this.status.url, {
         headers: { 'User-Agent': `ztorrent/${this.current}` }
