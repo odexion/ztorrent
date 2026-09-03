@@ -83,7 +83,8 @@ const S = {
   globalHistory: { down: [], up: [] },
   didAutoSelect: false,
   dragIds: null,           // torrent ids being dragged onto a label, if any
-  update: null             // updater state; null until main reports one
+  update: null,            // updater state; null until main reports one
+  version: ''              // this build, as the status bar shows it
 }
 const HISTORY_LEN = 150
 
@@ -122,6 +123,7 @@ async function init () {
   S.labels = await api.getLabels()
   S.labelStyles = await api.getLabelStyles()
   S.log = await api.getLog()
+  S.version = await api.getVersion().catch(() => '')
   const savedCols = await api.getColumns()
   if (savedCols?.order?.length) {
     // 'done' merged into 'status'; drop it from orders saved by older builds.
@@ -138,6 +140,7 @@ async function init () {
   renderSidebar()
   renderHead()
   renderStatusbar()
+  renderBrand()
   wireEvents()
 
   const snap = await api.getSnapshot()
@@ -550,6 +553,22 @@ function renderStatusbar () {
     `<span class="k">T: ${fmt.bytes(g.uploaded)}</span>`
 }
 
+/* The mark and the version this build is. Painted once: the version cannot
+   change while the app runs, and the bar around it redraws every second.
+
+   The number is shown as it comes back, with no 'v' in front of it -- the same
+   string the About box, the release tag and the update pill use, so the four
+   can be compared without translating between them. An unpackaged run shows the
+   package.json version, which is exactly what it is running. */
+function renderBrand () {
+  const el = $('#sb-brand')
+  el.hidden = false
+  el.innerHTML = `${icon('logo')}<span>${fmt.esc(S.version)}</span>`
+  el.title = S.version
+    ? `ztorrent ${S.version} -- About ztorrent`
+    : 'About ztorrent'
+}
+
 /* ══════════════════════════════════════════════════════════════════ updates */
 
 /* One pill in the status bar carries the whole flow: it says what the updater
@@ -557,7 +576,9 @@ function renderStatusbar () {
    asked about -- an idle check, a check that came back with nothing -- shows
    nothing at all, so the bar stays as quiet as it was before. */
 const UPDATE_VIEW = {
-  checking:    () => ({ text: 'Checking for updates…', busy: true }),
+  // The six-hourly check answers to nobody: putting it in the bar would show a
+  // spinner no one asked for, for as long as the network takes to answer.
+  checking:    u => u.manual ? { text: 'Checking for updates…', busy: true } : null,
   available:   u => ({ text: `Update available · ${u.version}`, act: 'download' }),
   downloading: u => ({
     text: `Downloading update · ${u.size ? Math.round((u.received / u.size) * 100) : 0}%`,
@@ -565,7 +586,13 @@ const UPDATE_VIEW = {
   }),
   staging:     () => ({ text: 'Preparing update…', busy: true }),
   ready:       u => ({ text: `Restart to update · ${u.version}`, act: 'apply', ready: true }),
-  error:       u => ({ text: 'Update check failed', act: 'retry', title: u.error || '' })
+  // A failed check is reported where it was asked for -- the menu check says so
+  // in a dialog, the automatic one says nothing at all -- and then it is over. A
+  // download that died is the one failure that left something half-done, so it
+  // is the only one that stays in the bar, offering to pick the work up again.
+  error:       u => u.errorFrom === 'download'
+    ? { text: 'Update download failed', act: 'retry', title: u.error || '' }
+    : null
 }
 
 function renderUpdate () {
@@ -573,7 +600,8 @@ function renderUpdate () {
   const u = S.update
   const view = u && UPDATE_VIEW[u.state]?.(u)
 
-  // Idle, or a check the user never asked for that found nothing.
+  // Idle, or something the user never asked about: a silent check, or one that
+  // came back with nothing.
   if (!view) { el.hidden = true; el.dataset.act = ''; return }
 
   el.hidden = false
@@ -1111,6 +1139,7 @@ function wireEvents () {
   // The pill has looked clickable since it was added -- hover state, and a
   // tooltip saying what it toggles -- but nothing was ever bound to it.
   $('#sb-alt').addEventListener('click', () => doAction('alt-speed'))
+  $('#sb-brand').addEventListener('click', () => api.showAbout())
   $('#sb-update').addEventListener('click', onUpdateClick)
 
   $('#sidebar').addEventListener('click', e => {

@@ -876,6 +876,16 @@ html, body {
 #statusbar .sb.clickable:hover { background: var(--hover); color: var(--ink); }
 .sb .k { color: var(--ink-faint); }
 
+/* The mark and the version, at the quiet end of the bar. A title bar says
+   "ztorrent" and nothing else, so the version had no home outside a dialog
+   nobody opens -- it sits here instead, next to the mark that stands in for the
+   name. Deliberately not in the accent: that belongs to the update pill above,
+   which is the one thing down here allowed to ask for attention. The whole
+   block opens About, which is the rest of the answer. */
+#sb-brand { gap: 6px; opacity: .75; }
+#statusbar #sb-brand:hover { opacity: 1; }
+#sb-brand svg { width: 14px; height: 14px; }
+
 /* The throttle pill, and the status bar's half of the amber above. Off, it
    is as quiet as its neighbours and reads "No limit"; on, it fills amber and
    names the two rates actually in force. */

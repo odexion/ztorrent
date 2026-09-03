@@ -23,6 +23,10 @@ contextBridge.exposeInMainWorld('ztorrent', {
   getColumns: () => invoke('columns:get'),
   setColumns: cols => invoke('columns:set', cols),
 
+  // ---- application
+  getVersion: () => invoke('app:version'),
+  showAbout: () => invoke('app:about'),
+
   // ---- updates
   getUpdate: () => invoke('update:get'),
   checkForUpdate: () => invoke('update:check'),

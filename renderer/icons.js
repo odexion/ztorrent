@@ -4,6 +4,19 @@
  * into the artwork. Each entry is the inner markup of the shared <svg> wrapper.
  */
 const P = {
+  /* ---- brand ---- */
+
+  /* The application mark, the same drawing as build/logo.svg: a z whose middle
+     strokes step down like a file filling in. It carries its own weights rather
+     than the shared 1.75 -- the two rules are the mark, and thinning them to
+     match the toolbar's line icons would leave a different glyph. */
+  logo: `
+    <path d="M5.8 5.2L18.2 5.2" stroke-width="3.4"/>
+    <path d="M12.1 8.95L16.1 8.95" stroke-width="2"/>
+    <path d="M10 12L14 12" stroke-width="2"/>
+    <path d="M7.9 15.05L11.9 15.05" stroke-width="2"/>
+    <path d="M5.8 18.8L18.2 18.8" stroke-width="3.4"/>`,
+
   /* ---- toolbar ---- */
   'add-file': `
     <path d="M14.5 2.5H6.5a2 2 0 0 0-2 2v15a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2V7.5z"/>

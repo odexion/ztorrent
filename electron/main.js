@@ -185,6 +185,10 @@ ipcMain.handle('labels:setStyle', (_e, name, style) => {
 })
 ipcMain.handle('log:get', () => engine.logLines)
 
+// ---- application
+ipcMain.handle('app:version', () => app.getVersion())
+ipcMain.handle('app:about', () => { showAbout() })
+
 // ---- updates
 ipcMain.handle('update:get', () => updater.state())
 ipcMain.handle('update:check', async () => {
