@@ -557,6 +557,29 @@ export class Engine extends EventEmitter {
     else torrent.files.forEach(f => f.select())
   }
 
+  /**
+   * Hands a torrent back to WebTorrent, and reports whether the client still
+   * had it to give back.
+   *
+   * A torrent that errors destroys itself on the way down, and destroying is
+   * what splices it out of client.torrents -- so by the time anyone stops or
+   * removes it, the client no longer knows the object our record is still
+   * holding. client.remove() is async and rejects on an id it cannot find, with
+   * nobody awaiting it: an unhandled rejection printed for a torrent that was
+   * already gone. Asking first is the whole fix.
+   *
+   * The answer matters beyond the warning. destroyStore is how the data gets
+   * deleted, and a remove that never reached the client deleted nothing, so the
+   * caller has to know to go and do it by hand.
+   */
+  _release (torrent, destroyStore) {
+    if (!torrent || torrent.destroyed) return false
+    if (!this.client.torrents.includes(torrent)) return false
+    this.client.remove(torrent, { destroyStore }, () => {})
+      .catch(err => this.log(`Could not release torrent: ${err.message}`, 'warn'))
+    return true
+  }
+
   /** Stop tears the swarm down entirely but keeps the torrent in the list. */
   stopTorrent (id) {
     const r = this.records.get(id)
@@ -568,7 +591,7 @@ export class Engine extends EventEmitter {
       r.uploadedBase += r.torrent.uploaded
       r.downloadedBase = r.torrent.downloaded
       r.length = r.torrent.length || r.length
-      this.client.remove(r.torrent, { destroyStore: false }, () => {})
+      this._release(r.torrent, false)
       r.torrent = null
     }
     r.state = State.STOPPED
@@ -583,10 +606,12 @@ export class Engine extends EventEmitter {
     if (!r) return
     const savePath = r.savePath
     const name = r.name
-    if (r.torrent) {
-      this.client.remove(r.torrent, { destroyStore: deleteData }, () => {})
-      r.torrent = null
-    } else if (deleteData && savePath && name && name !== 'Downloading metadata') {
+    // Whether WebTorrent took the job. It only did if it still had the torrent;
+    // an errored one it destroyed and forgot leaves the files to us.
+    const released = this._release(r.torrent, deleteData)
+    r.torrent = null
+
+    if (deleteData && !released && savePath && name && name !== 'Downloading metadata') {
       const target = path.join(savePath, name)
       try {
         if (fs.existsSync(target)) fs.rmSync(target, { recursive: true, force: true })
