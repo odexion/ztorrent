@@ -23,6 +23,35 @@ export const State = {
 const KB = 1024
 
 /**
+ * WebTorrent caches whole pieces in memory per torrent -- 20 of them unless
+ * told otherwise -- so what that costs is decided by the piece length, not by
+ * the slot count. A torrent with 4 MiB pieces parks 80 MB there before a byte
+ * is downloaded, and several at once will happily take half a gigabyte.
+ *
+ * So budget the cache in bytes and let the slot count fall out of it: a
+ * big-piece torrent holds fewer pieces rather than proportionally more memory,
+ * and a small-piece one keeps the old count, which was never the expensive
+ * case. The cache is what spares the disk a re-read when a peer asks for a
+ * piece we just wrote, so it is worth keeping -- just not at any price.
+ */
+const STORE_CACHE_BYTES = 24 * 1024 * KB
+const MAGNET_CACHE_SLOTS = 4
+
+function cacheSlots (pieceLength) {
+  // A magnet has no metadata yet, and WebTorrent builds the store before it
+  // emits 'metadata', so there is nothing to size against on the first run.
+  // The piece length is persisted once known, so the next start gets it right.
+  if (!pieceLength) return MAGNET_CACHE_SLOTS
+  return Math.max(2, Math.min(20, Math.floor(STORE_CACHE_BYTES / pieceLength)))
+}
+
+/**
+ * Below this a swarm starts to starve, so the budget below is never divided
+ * past it however many torrents are running.
+ */
+const MIN_CONNS_PER_TORRENT = 30
+
+/**
  * The two rates actually in force, in bytes/s, ready for WebTorrent's
  * throttles. Alternate mode swaps in its own pair; a zero on either side means
  * unlimited, the way it does everywhere else a rate is entered.
@@ -351,7 +380,8 @@ export class Engine extends EventEmitter {
     const addOpts = {
       path: record.savePath,
       strategy: record.sequential ? 'sequential' : 'rarest',
-      uploads: this.store.settings.maxUploadSlots
+      uploads: this.store.settings.maxUploadSlots,
+      storeCacheSlots: cacheSlots(record.pieceLength)
     }
     // The store hands itself back through this holder so completion can ask it
     // to rename the .part files.
@@ -493,7 +523,26 @@ export class Engine extends EventEmitter {
       activeTotal++
       if (!willSeed) activeDownloads++
     }
+    this._applyConnBudget()
     this.emit('changed')
+  }
+
+  /**
+   * WebTorrent checks each torrent's own connection count against
+   * client.maxConns, so "global maximum connections" was really per torrent
+   * however the preference was labelled: five active torrents meant five times
+   * the number the user entered, in sockets and in the buffers behind them.
+   * Share the budget out between them instead, so the setting means what it
+   * says. Lowering it never drops a live peer, it just stops new ones, so this
+   * is safe to recompute whenever the active set changes.
+   */
+  _applyConnBudget () {
+    if (!this.client) return
+    let active = 0
+    for (const r of this.records.values()) if (r.torrent) active++
+    const budget = this.store.settings.globalMaxConnections
+    this.client.maxConns = Math.max(MIN_CONNS_PER_TORRENT,
+      Math.floor(budget / Math.max(1, active)))
   }
 
   // ------------------------------------------------------------- commands
@@ -790,7 +839,6 @@ export class Engine extends EventEmitter {
     const { dn, up } = throttleRates(settings)
     this.client.throttleDownload(dn)
     this.client.throttleUpload(up)
-    this.client.maxConns = settings.globalMaxConnections
     // Read afresh for every outgoing peer, so this one needs no restart.
     this.client.secure = settings.encryption ?? 1
     for (const r of this.records.values()) {

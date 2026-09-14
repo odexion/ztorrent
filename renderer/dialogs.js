@@ -217,8 +217,11 @@ export async function openAddDialog (source, defaultPath = '') {
       }
 
       box.querySelector('[data-role="browse"]').onclick = async () => {
-        const dir = await api.chooseFolder('Choose Download Folder')
-        if (dir) box.querySelector('[data-role="path"]').value = dir
+        const field = box.querySelector('[data-role="path"]')
+        // Open on the folder the sheet is already offering, so browsing starts
+        // where the last torrent went rather than back at the system default.
+        const dir = await api.chooseFolder('Choose Download Folder', field.value.trim())
+        if (dir) field.value = dir
       }
       const all = box.querySelector('[data-role="all"]')
       const boxes = () => [...box.querySelectorAll('[data-file]')]
@@ -290,8 +293,9 @@ export async function openUrlDialog () {
       <div data-role="error" class="err-text" style="margin-top:6px"></div>`,
     onMount: box => {
       box.querySelector('[data-role="browse"]').onclick = async () => {
-        const dir = await api.chooseFolder('Choose Download Folder')
-        if (dir) box.querySelector('[data-role="path"]').value = dir
+        const field = box.querySelector('[data-role="path"]')
+        const dir = await api.chooseFolder('Choose Download Folder', field.value.trim())
+        if (dir) field.value = dir
       }
       // Offer whatever magnet link is already on the clipboard, like µTorrent does.
       navigator.clipboard?.readText?.().then(t => {
@@ -429,12 +433,14 @@ export function openCreateDialog () {
       <div data-role="status" style="margin-top:6px;color:var(--ink-dim)"></div>`,
     onMount: box => {
       box.querySelector('[data-role="pick-file"]').onclick = async () => {
-        const p = await api.chooseFile('Choose a File to Share')
-        if (p) box.querySelector('[data-role="src"]').value = p
+        const field = box.querySelector('[data-role="src"]')
+        const p = await api.chooseFile('Choose a File to Share', field.value.trim())
+        if (p) field.value = p
       }
       box.querySelector('[data-role="pick-dir"]').onclick = async () => {
-        const p = await api.chooseFolder('Choose a Folder to Share')
-        if (p) box.querySelector('[data-role="src"]').value = p
+        const field = box.querySelector('[data-role="src"]')
+        const p = await api.chooseFolder('Choose a Folder to Share', field.value.trim())
+        if (p) field.value = p
       }
     },
     onOk: async box => {
@@ -611,7 +617,7 @@ export async function openPreferences (settings, apply) {
             <div class="frow wide">${ck('altSpeedEnabled', 'Use alternate limits now')}</div>
           </fieldset>
           <fieldset><legend>Number of connections</legend>
-            ${num('globalMaxConnections', 'Global maximum connections:', '', 10)}
+            ${num('globalMaxConnections', 'Global maximum connections:', 'shared out between active torrents', 10)}
             ${num('maxUploadSlots', 'Upload slots per torrent:', '', 1)}
           </fieldset>
         </div>
@@ -656,8 +662,9 @@ export async function openPreferences (settings, apply) {
         }
       }
       box.querySelector('[data-role="browse-dl"]').onclick = async () => {
-        const dir = await api.chooseFolder('Choose Download Folder')
-        if (dir) box.querySelector('[data-k="downloadPath"]').value = dir
+        const field = box.querySelector('[data-k="downloadPath"]')
+        const dir = await api.chooseFolder('Choose Download Folder', field.value.trim())
+        if (dir) field.value = dir
       }
       // The proxy switches these off in the engine whatever the boxes say, so
       // grey them out rather than letting the sheet imply otherwise.

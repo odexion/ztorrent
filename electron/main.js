@@ -354,16 +354,34 @@ ipcMain.handle('cmd:remove', async (_e, ids, deleteData) => {
 
 // ------------------------------------------------------------ IPC: utilities
 
-ipcMain.handle('util:chooseFolder', async (_e, title) => {
+/**
+ * Where a browse sheet should open. A file is taken as the folder holding it,
+ * and a path the user has since deleted or unplugged is dropped -- that would
+ * land the sheet somewhere arbitrary, so let the OS choose instead.
+ */
+function startingDir (p) {
+  if (!p || typeof p !== 'string') return undefined
+  try {
+    return fs.statSync(p).isDirectory() ? p : startingDir(path.dirname(p))
+  } catch {
+    return undefined
+  }
+}
+
+ipcMain.handle('util:chooseFolder', async (_e, title, startIn) => {
   const res = await dialog.showOpenDialog(win, {
-    title: title || 'Choose Folder', properties: ['openDirectory', 'createDirectory']
+    title: title || 'Choose Folder',
+    defaultPath: startingDir(startIn),
+    properties: ['openDirectory', 'createDirectory']
   })
   return res.canceled ? null : res.filePaths[0]
 })
 
-ipcMain.handle('util:chooseFile', async (_e, title) => {
+ipcMain.handle('util:chooseFile', async (_e, title, startIn) => {
   const res = await dialog.showOpenDialog(win, {
-    title: title || 'Choose File', properties: ['openFile']
+    title: title || 'Choose File',
+    defaultPath: startingDir(startIn),
+    properties: ['openFile']
   })
   return res.canceled ? null : res.filePaths[0]
 })

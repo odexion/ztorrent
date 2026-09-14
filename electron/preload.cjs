@@ -58,8 +58,8 @@ contextBridge.exposeInMainWorld('ztorrent', {
 
   // ---- utilities
   createTorrent: opts => invoke('util:createTorrent', opts),
-  chooseFolder: title => invoke('util:chooseFolder', title),
-  chooseFile: title => invoke('util:chooseFile', title),
+  chooseFolder: (title, startIn) => invoke('util:chooseFolder', title, startIn),
+  chooseFile: (title, startIn) => invoke('util:chooseFile', title, startIn),
   saveFileDialog: (name, filters) => invoke('util:saveFile', name, filters),
   revealInFinder: (id, fileIndex) => invoke('util:reveal', id, fileIndex),
   openItem: (id, fileIndex) => invoke('util:open', id, fileIndex),
