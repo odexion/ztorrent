@@ -119,7 +119,12 @@ impl Harness {
         self.settle();
     }
 
+    /// Clicks what carries `selector`, once any sheet has finished opening. A
+    /// dialog's opening animation runs on real time, not the test clock, and a
+    /// click while it runs lands where the sheet has not arrived yet.
     fn click(&mut self, selector: &'static str) {
+        self.cx.executor().advance_clock(std::time::Duration::from_secs(1));
+        std::thread::sleep(std::time::Duration::from_millis(400));
         self.settle();
         let bounds = self.cx.debug_bounds(selector).unwrap_or_else(|| panic!("nothing on screen tagged {selector:?}"));
         self.cx.simulate_click(bounds.center(), Modifiers::none());
@@ -373,6 +378,40 @@ fn preferences_apply_sends_every_field_with_minimums(cx: &mut TestAppContext) {
     assert_eq!(patch["maxUploadSlots"], 4);
     assert!(patch.contains_key("enableDHT") && patch.contains_key("proxyPassword"));
     assert!(!h.dialog_open());
+}
+
+/// A sheet's dropdown is a native menu whose choice comes back as an action,
+/// dispatched from whatever holds the focus -- normally the dialog around the
+/// sheet, above the sheet's own handler. Pressing the dropdown has to put the
+/// sheet on that path, or the choice is lost (the dark theme could only be
+/// chosen with Cmd+L).
+#[gpui::test]
+fn preferences_theme_dropdown_previews_and_applies(cx: &mut TestAppContext) {
+    let mut h = harness(cx, boot());
+    let dark = |h: &mut Harness| h.cx.update(|_, cx| cx.global::<crate::theme::Theme>().dark);
+    assert!(!dark(&mut h));
+    h.act(Preferences);
+    h.click("nav-Appearance");
+    let bounds = h.cx.debug_bounds("dd-theme").expect("the theme dropdown is on the page");
+    h.cx.simulate_mouse_down(bounds.center(), gpui::MouseButton::Left, Modifiers::none());
+    h.settle();
+    // What the menu does with the chosen item.
+    h.cx.update(|window, cx| {
+        window.dispatch_action(Box::new(crate::dialogs::PickOption { field: "theme".into(), value: "graphite".into() }), cx)
+    });
+    h.settle();
+    assert!(dark(&mut h), "the choice reaches the sheet and previews");
+
+    // The preview switches the window's appearance, and that must not put the
+    // saved theme back.
+    let ws = h.ws.clone();
+    h.cx.update(|_, cx| ws.update(cx, |ws, cx| ws.appearance_changed(cx)));
+    h.settle();
+    assert!(dark(&mut h), "an appearance change keeps the previewed theme");
+
+    h.click("prefs-apply");
+    let patch = h.sent().into_iter().find_map(|c| if let Command::SetSettings(p) = c { Some(p) } else { None }).expect("Apply saves");
+    assert_eq!(patch["theme"], "graphite");
 }
 
 #[gpui::test]

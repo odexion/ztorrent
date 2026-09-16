@@ -119,10 +119,18 @@ fn read(input: &Entity<InputState>, cx: &App) -> String {
 }
 
 /// A dropdown drawn as a button that opens a native menu, as a <select> does on macOS.
-fn dropdown(p: &Palette, id: &str, current: String, field: &'static str, options: Vec<(String, String)>, selected: String) -> Stateful<Div> {
+/// A native pop-up menu whose choice arrives as a [`PickOption`] action.
+///
+/// Actions travel from the focused element up, and while a sheet is open the
+/// focus is usually on the dialog around it, above the sheet's handler. So the
+/// sheet's own focus handle is focused first, putting the handler on that path.
+fn dropdown(p: &Palette, id: &str, current: String, field: &'static str, options: Vec<(String, String)>, selected: String, sheet: &FocusHandle) -> Stateful<Div> {
+    let sheet = sheet.clone();
     let hover = p.hover;
+    let selector = format!("dd-{id}");
     div()
-        .id(SharedString::from(format!("dd-{id}")))
+        .id(SharedString::from(selector.clone()))
+        .debug_selector(move || selector)
         .flex()
         .items_center()
         .justify_between()
@@ -137,6 +145,7 @@ fn dropdown(p: &Palette, id: &str, current: String, field: &'static str, options
         .child(div().min_w_0().truncate().child(current))
         .child(div().text_size(px(9.)).text_color(p.ink_faint).child("▼"))
         .on_mouse_down(MouseButton::Left, move |ev, window, cx| {
+            window.focus(&sheet, cx);
             let mut menu = NativeMenu::new();
             for (value, label) in &options {
                 menu = menu.menu_with_check(label.clone(), *value == selected, Box::new(PickOption { field: field.into(), value: value.clone() }));
@@ -306,6 +315,7 @@ pub struct AddSheet {
     last_save_path: String,
     error: Option<String>,
     busy: bool,
+    focus: FocusHandle,
 }
 
 /// The "Add New Torrent" sheet: destination, contents, and start options.
@@ -328,7 +338,7 @@ pub fn open_add<V: 'static>(window: &mut Window, cx: &mut Context<V>, source: To
                 let path = text_input(window, cx, &offered, "");
                 let new_label = text_input(window, cx, "", "Label name");
                 let checked = vec![true; info.files.len()];
-                let sheet = cx.new(|_| AddSheet {
+                let sheet = cx.new(|cx| AddSheet {
                     source,
                     info,
                     path,
@@ -341,6 +351,7 @@ pub fn open_add<V: 'static>(window: &mut Window, cx: &mut Context<V>, source: To
                     last_save_path: lib.settings.last_save_path.clone(),
                     error: None,
                     busy: false,
+                    focus: cx.focus_handle(),
                 });
                 let target = sheet.clone();
                 open(window, cx, 560., sheet, Confirm::With(Rc::new(move |window, cx| target.update(cx, |s, cx| s.confirm(window, cx)))));
@@ -474,6 +485,7 @@ impl Render for AddSheet {
 
         div()
             .id("add-sheet")
+            .track_focus(&self.focus)
             .flex()
             .flex_col()
             .on_action(cx.listener(|this, a: &PickOption, window, cx| {
@@ -498,7 +510,7 @@ impl Render for AddSheet {
                 div()
                     .flex()
                     .gap(px(8.))
-                    .child(div().w(px(170.)).child(dropdown(&p, "label", label_text, "label", options, selected)))
+                    .child(div().w(px(170.)).child(dropdown(&p, "label", label_text, "label", options, selected, &self.focus)))
                     .when(self.label.as_deref() == Some(""), |d| d.child(div().w(px(170.)).child(Input::new(&self.new_label)))),
             ))
             .child(div().mt(px(8.)).child(legend(&p, "Torrent Contents")))
@@ -620,6 +632,7 @@ pub struct CreateSheet {
     error: Option<String>,
     status: Option<String>,
     busy: bool,
+    focus: FocusHandle,
 }
 
 pub fn open_create<V: 'static>(window: &mut Window, cx: &mut Context<V>) {
@@ -631,7 +644,7 @@ pub fn open_create<V: 'static>(window: &mut Window, cx: &mut Context<V>) {
     });
     let web_seeds = cx.new(|cx| TextareaState::new(window, cx).rows(2));
     let comment = text_input(window, cx, "", "");
-    let sheet = cx.new(|_| CreateSheet { src, trackers, web_seeds, comment, piece: 0, private: false, seed: true, error: None, status: None, busy: false });
+    let sheet = cx.new(|cx| CreateSheet { src, trackers, web_seeds, comment, piece: 0, private: false, seed: true, error: None, status: None, busy: false, focus: cx.focus_handle() });
     let target = sheet.clone();
     open(window, cx, 560., sheet, Confirm::With(Rc::new(move |window, cx| target.update(cx, |s, cx| s.confirm(window, cx)))));
 }
@@ -733,6 +746,7 @@ impl Render for CreateSheet {
         let options = PIECE_SIZES.iter().map(|(l, v)| (v.to_string(), l.to_string())).collect();
         div()
             .id("create-sheet")
+            .track_focus(&self.focus)
             .flex()
             .flex_col()
             .on_action(cx.listener(|this, a: &PickOption, _, cx| {
@@ -767,7 +781,7 @@ impl Render for CreateSheet {
             .child(div().mb(px(4.)).text_color(p.ink_dim).child("Web seeds (optional, one URL per line):"))
             .child(div().mb(px(8.)).font_family(MONO).child(Textarea::new(&self.web_seeds).h(px(52.))))
             .child(frow(&p, "Comment:", Input::new(&self.comment)))
-            .child(frow(&p, "Piece size:", div().w(px(140.)).child(dropdown(&p, "piece", piece_label, "piece", options, self.piece.to_string()))))
+            .child(frow(&p, "Piece size:", div().w(px(140.)).child(dropdown(&p, "piece", piece_label, "piece", options, self.piece.to_string(), &self.focus))))
             .child(
                 div()
                     .flex()
@@ -836,6 +850,7 @@ pub struct PrefsSheet {
     inputs: BTreeMap<&'static str, Entity<InputState>>,
     interfaces: Vec<NetInterface>,
     applied: bool,
+    focus: FocusHandle,
 }
 
 pub fn open_preferences<V: 'static>(settings: Settings, window: &mut Window, cx: &mut Context<V>) {
@@ -866,7 +881,7 @@ pub fn open_preferences<V: 'static>(settings: Settings, window: &mut Window, cx:
         let value = draft.get(key).map(|v| v.to_string()).unwrap_or_default();
         inputs.insert(key, text_input(window, cx, &value, ""));
     }
-    let sheet = cx.new(|_| PrefsSheet { page: Page::General, original: settings, draft, inputs, interfaces: Vec::new(), applied: false });
+    let sheet = cx.new(|cx| PrefsSheet { page: Page::General, original: settings, draft, inputs, interfaces: Vec::new(), applied: false, focus: cx.focus_handle() });
     let rx = ask(cx, Command::Interfaces);
     let weak = sheet.downgrade();
     cx.spawn(async move |_, cx| {
@@ -950,6 +965,7 @@ impl Render for PrefsSheet {
             nav = nav.child(
                 div()
                     .id(label)
+                    .debug_selector(move || format!("nav-{label}"))
                     .flex()
                     .items_center()
                     .gap(px(8.))
@@ -1018,10 +1034,10 @@ impl Render for PrefsSheet {
                     .child(frow(&p, "Password:", Input::new(&self.inputs["proxyPassword"])))
                     .child(hint(&p, "Covers tracker announces, web seeds and outgoing peer connections. Anything that cannot be routed is switched off rather than sent around the proxy: DHT, local discovery, µTP, port mapping and udp:// trackers all stop while this is on. Takes effect after a restart."))
                     .child(div().mt(px(8.)).child(legend(&p, "Network interface")))
-                    .child(frow(&p, "Send traffic from:", dropdown(&p, "bind", bind_label, "bindInterface", ifaces, bind.clone())))
+                    .child(frow(&p, "Send traffic from:", dropdown(&p, "bind", bind_label, "bindInterface", ifaces, bind.clone(), &self.focus)))
                     .child(hint(&p, "Pin every outgoing connection to one interface — a VPN's, typically. If it goes away, connections fail instead of falling back to your normal one, and resume by themselves when it returns. Local discovery, µTP, port mapping and udp:// trackers stop while this is set; DHT keeps working, bound to the same interface. Takes effect after a restart."))
                     .child(div().mt(px(8.)).child(legend(&p, "Protocol encryption")))
-                    .child(frow(&p, "Peer connections:", dropdown(&p, "enc", enc_label, "encryption", enc_options, enc.to_string())))
+                    .child(frow(&p, "Peer connections:", dropdown(&p, "enc", enc_label, "encryption", enc_options, enc.to_string(), &self.focus)))
                     .child(hint(&p, "Hides the handshake from traffic inspection. It does not hide tracker or DHT activity, and your address is still public to the swarm."))
                     .child(div().mt(px(8.)).child(legend(&p, "Peer discovery")))
                     .child(self.check(cx, "enableDHT", "Enable DHT (distributed hash table)", off.dht))
@@ -1056,12 +1072,13 @@ impl Render for PrefsSheet {
                 let theme = self.string("theme");
                 let options = vec![("classic".to_string(), "Light".to_string()), ("graphite".to_string(), "Dark".to_string())];
                 let label = if theme == "graphite" { "Dark" } else { "Light" }.to_string();
-                div().child(legend(&p, "Theme")).child(frow(&p, "Appearance:", div().w(px(160.)).child(dropdown(&p, "theme", label, "theme", options, theme)))).into_any_element()
+                div().child(legend(&p, "Theme")).child(frow(&p, "Appearance:", div().w(px(160.)).child(dropdown(&p, "theme", label, "theme", options, theme, &self.focus)))).into_any_element()
             }
         };
 
         div()
             .id("prefs")
+            .track_focus(&self.focus)
             .flex()
             .flex_col()
             .on_action(cx.listener(|this, a: &PickOption, _, cx| {

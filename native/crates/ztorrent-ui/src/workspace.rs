@@ -104,10 +104,7 @@ impl Workspace {
         // goes back on top each time, since the preference -- not the OS -- decides.
         let settings = state.settings.clone();
         cx.defer_in(window, move |_, _, cx| crate::apply_theme(&settings, cx));
-        let appearance = cx.observe_window_appearance(window, |this: &mut Workspace, _, cx| {
-            let settings = this.state.settings.clone();
-            crate::apply_theme(&settings, cx);
-        });
+        let appearance = cx.observe_window_appearance(window, |this: &mut Workspace, _, cx| this.appearance_changed(cx));
         let mut subscriptions = subscriptions;
         subscriptions.push(appearance);
         let list_focus = cx.focus_handle();
@@ -409,6 +406,16 @@ impl Workspace {
             1 => crate::dialogs::open_add(window, cx, TorrentSource::Path(paths[0].clone()), None),
             _ => send(cx, Command::AddPaths(paths)),
         }
+    }
+
+    /// Puts ztorrent's palette back over the one gpui-component re-syncs to the
+    /// system appearance. The theme on screen, not the saved one: Preferences
+    /// previews a theme by switching the window's appearance, which lands here,
+    /// and putting the saved theme back would undo the preview at once.
+    pub(crate) fn appearance_changed(&mut self, cx: &mut Context<Self>) {
+        let mut shown = self.state.settings.clone();
+        shown.theme = if cx.global::<Theme>().dark { "graphite" } else { "classic" }.into();
+        crate::apply_theme(&shown, cx);
     }
 
     fn set_theme(&mut self, theme: &str, cx: &mut Context<Self>) {
