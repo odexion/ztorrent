@@ -284,9 +284,14 @@ fn torrent_commands_on_a_live_local_swarm() {
 
     let leecher = engine(leech_dir.path(), |_| {});
     let mut lw = Watch::new(&leecher);
+    // File order follows the order the folder was read in, which is not sorted
+    // everywhere (Linux): look the indices up rather than assume them.
+    let info = ask(&leecher, |r| Command::Inspect { source: TorrentSource::Path(torrent.clone()), reply: r }).expect("inspects");
+    let index = |name: &str| info.files.iter().find(|f| f.name == name).map(|f| f.index).unwrap_or_else(|| panic!("{name} in the torrent"));
+    let (big, small) = (index("big.bin"), index("small.bin"));
     let id = added(ask(&leecher, |r| Command::Add {
         source: TorrentSource::Path(torrent.clone()),
-        options: AddOptions { priorities: [(0usize, 1u8), (1usize, 0u8)].into_iter().collect(), wanted: Some(vec![0]), ..Default::default() },
+        options: AddOptions { priorities: [(big, 1u8), (small, 0u8)].into_iter().collect(), wanted: Some(vec![big]), ..Default::default() },
         reply: Some(r),
     }));
     leecher.commands.send(Command::Details(Some(id.clone()))).unwrap();
@@ -329,12 +334,12 @@ fn torrent_commands_on_a_live_local_swarm() {
     lw.wait_log("Added peer 127.0.0.1:", 5);
     lw.wait_log("finished downloading.", 10);
     lw.until("completion event", 5, |_, _, _, w| !w.completed.is_empty());
-    let big = leech_dir.path().join("downloads/share/big.bin");
-    assert!(big.exists(), "the wanted file was renamed from .part");
+    let big_file = leech_dir.path().join("downloads/share/big.bin");
+    assert!(big_file.exists(), "the wanted file was renamed from .part");
     assert!(!leech_dir.path().join("downloads/share/small.bin").exists(), "the skipped file was never finalised");
 
     // Resolving, saving the .torrent, sequential, trackers, reannounce.
-    let resolved = ask(&leecher, |rep| Command::ResolvePath { id: id.clone(), file: Some(0), reply: rep }).expect("resolves");
+    let resolved = ask(&leecher, |rep| Command::ResolvePath { id: id.clone(), file: Some(big), reply: rep }).expect("resolves");
     assert!(resolved.exists && resolved.target.starts_with(&resolved.save_path));
     let top = ask(&leecher, |rep| Command::ResolvePath { id: id.clone(), file: None, reply: rep }).unwrap();
     assert!(top.target.ends_with("share"));
