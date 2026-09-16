@@ -26,6 +26,18 @@ runs:
           libx11-dev libx11-xcb-dev libxcb1-dev libxi-dev libxcursor-dev libxrandr-dev \
           libfontconfig-dev libfreetype-dev
 
+    # OpenSSL's Windows build needs a native Perl. Under `shell: bash` the perl
+    # first on PATH is Git's MSYS one, which lacks modules Configure uses.
+    - name: Strawberry Perl for OpenSSL (Windows)
+      if: runner.os == 'Windows'
+      shell: bash
+      run: |
+        perl='C:\Strawberry\perl\bin\perl.exe'
+        if [ ! -x "/c/Strawberry/perl/bin/perl.exe" ]; then
+          choco install strawberryperl -y --no-progress
+        fi
+        echo "OPENSSL_SRC_PERL=$perl" >> "$GITHUB_ENV"
+
     # ring compiles its C with clang for Windows on Arm.
     - name: clang (Windows on Arm)
       if: runner.os == 'Windows' && runner.arch == 'ARM64'
