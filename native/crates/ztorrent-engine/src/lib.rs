@@ -103,13 +103,29 @@ pub(crate) struct Engine {
     suspended: Vec<String>,
 }
 
+/// A TCP port nothing is listening on right now, as the system hands them out.
+fn free_port() -> Option<u16> {
+    let listener = std::net::TcpListener::bind(("0.0.0.0", 0)).ok()?;
+    listener.local_addr().ok().map(|a| a.port()).filter(|&p| p != 0)
+}
+
 fn now_ms() -> i64 {
     SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_millis() as i64).unwrap_or(0)
 }
 
 impl Engine {
     fn start(store: Store, options: EngineOptions, events: flume::Sender<Event>) -> anyhow::Result<Engine> {
-        let settings = store.settings().clone();
+        let mut settings = store.settings().clone();
+        // A random port is chosen here, once, instead of being left to
+        // libtorrent: it opens a socket per interface, and with port 0 each one
+        // gets a port of its own (on Windows the first one reported is not
+        // loopback's). One port for all of them is also what peers are told.
+        if settings.randomize_port {
+            if let Some(port) = free_port() {
+                settings.listen_port = port.into();
+                settings.randomize_port = false;
+            }
+        }
         // Decided before the session exists: the policy decides what the session
         // is even allowed to switch on.
         let policy = EgressPolicy::from_settings(&settings);
