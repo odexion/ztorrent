@@ -1,0 +1,108 @@
+[package]
+name = "ztorrent"
+description = "A BitTorrent client for macOS, Windows and Linux"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+ztorrent-core = { path = "../ztorrent-core" }
+ztorrent-engine = { path = "../ztorrent-engine" }
+ztorrent-secrets = { path = "../ztorrent-secrets" }
+ztorrent-ui = { path = "../ztorrent-ui" }
+ztorrent-updater = { path = "../ztorrent-updater" }
+flume = "0.11"
+anyhow.workspace = true
+dirs = "6"
+serde_json.workspace = true
+ctrlc = { version = "3", features = ["termination"] }
+futures-channel = "0.3"
+
+[build-dependencies]
+# Embeds the icon in ztorrent.exe; build.rs does nothing for other targets.
+winresource = "0.1"
+
+[target.'cfg(windows)'.dependencies]
+# The single-instance hand-off over a named pipe; Unix uses a socket file.
+interprocess = "2"
+
+[target.'cfg(target_os = "linux")'.dependencies]
+# Finds the distribution's CA bundle for the OpenSSL built into libtorrent.
+openssl-probe = "0.2"
+
+# cargo-packager: the installers electron-builder produced, from the same icons,
+# with the same bundle id (so Keychain entries and file associations carry
+# over) and the same document and URL types. Output names are normalised by
+# native/scripts/rename-artifacts.sh.
+#
+# Build first, then package, naming the same target both times:
+#   cargo build --release -p ztorrent --target <triple>
+#   cargo packager --release -p ztorrent --target <triple> --formats <format>
+[package.metadata.packager]
+product-name = "ztorrent"
+identifier = "dev.zaf4.ztorrent"
+category = "Utility"
+description = "A BitTorrent client for macOS, Windows and Linux"
+authors = ["zaf4 <zafermolbio@gmail.com>"]
+icons = ["../../../build/icon.png", "../../../build/icon.icns", "icons/icon.ico"]
+out-dir = "../../target/packages"
+resources = [{ src = "../../../sample-torrents", target = "sample-torrents" }]
+formats = ["dmg", "nsis", "appimage", "deb"]
+deep-link-protocols = [{ schemes = ["magnet"], name = "Magnet URI", role = "viewer" }]
+file-associations = [
+  { extensions = ["torrent"], mime-type = "application/x-bittorrent", name = "BitTorrent Document", description = "BitTorrent metainfo file", role = "viewer" },
+]
+
+[package.metadata.packager.macos]
+minimum-system-version = "11.0"
+# Ad-hoc: no Developer ID, as with the Electron releases. Apple Silicon refuses
+# to start a bundle with no signature at all ("is damaged"), and one signed
+# as a whole is what `xattr -dr com.apple.quarantine` then lets through.
+signing-identity = "-"
+
+[package.metadata.packager.nsis]
+installer-mode = "currentUser"
+installer-icon = "icons/icon.ico"
+# ztorrent up to 1.x was the Electron app, installed by electron-builder under
+# the GUID it derives from dev.zaf4.ztorrent. That install goes first, silently
+# and never with its data -- %APPDATA%\ztorrent is where this build reads its
+# library from -- so there is one ztorrent in the Start menu, not two.
+# `_?=` runs its uninstaller in place, so ExecWait really waits for it.
+preinstall-section = '''
+!define ZT_ELECTRON_GUID "0fa7e578-cfd5-5ed7-a965-fa5375b1b60c"
+Var ZtElectronCmd
+Var ZtElectronDir
+Var ZtElectronExit
+
+!macro ZtRemoveElectronInstall ROOT
+  ReadRegStr $ZtElectronCmd ${ROOT} "Software\Microsoft\Windows\CurrentVersion\Uninstall\${ZT_ELECTRON_GUID}" "QuietUninstallString"
+  ReadRegStr $ZtElectronDir ${ROOT} "Software\${ZT_ELECTRON_GUID}" "InstallLocation"
+  ${If} $ZtElectronCmd != ""
+  ${AndIf} $ZtElectronDir != ""
+    ExecWait '$ZtElectronCmd _?=$ZtElectronDir' $ZtElectronExit
+    Delete "$ZtElectronDir\Uninstall ztorrent.exe"
+    RMDir "$ZtElectronDir"
+  ${EndIf}
+!macroend
+
+Section RemoveElectronInstall
+  !insertmacro ZtRemoveElectronInstall HKCU
+  !insertmacro ZtRemoveElectronInstall HKLM
+SectionEnd
+'''
+
+[package.metadata.packager.deb]
+section = "net"
+# What the binary links (ldd) and what GPUI opens at run time: Wayland, and
+# Vulkan to draw. libtorrent and OpenSSL are inside the binary. glibc 2.35 is
+# Ubuntu 22.04's, where the release is built.
+depends = [
+  "libc6 (>= 2.35)",
+  "libstdc++6",
+  "libgcc-s1",
+  "libxcb1",
+  "libxkbcommon0",
+  "libxkbcommon-x11-0",
+  "libwayland-client0",
+  "libvulkan1",
+]

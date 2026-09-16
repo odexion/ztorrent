@@ -1,0 +1,18 @@
+[package]
+name = "ztorrent-lt-sys"
+description = "A narrow cxx bridge to libtorrent-rasterbar: the only unsafe code in ztorrent"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+links = "ztorrent-lt-bridge"
+
+[dependencies]
+cxx = "1"
+
+[build-dependencies]
+cxx-build = "1"
+# libtorrent is compiled from its release source and linked statically, with
+# OpenSSL built the same way, so the app carries no library of its own.
+cc = { version = "1.2", features = ["parallel"] }
+openssl-src = "300"
+sha2 = "0.10"

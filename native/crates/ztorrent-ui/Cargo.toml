@@ -1,0 +1,29 @@
+[package]
+name = "ztorrent-ui"
+description = "The ztorrent window, on GPUI. Depends on the core command set, never on the engine"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+ztorrent-core = { path = "../ztorrent-core" }
+gpui.workspace = true
+gpui-component.workspace = true
+gpui_platform.workspace = true
+gpui-kit-assets = "=0.6.1"
+anyhow.workspace = true
+serde_json.workspace = true
+flume = "0.11"
+futures-channel = "0.3"
+futures-core = "0.3"
+rfd = "0.15"
+notify-rust = "4"
+
+[dev-dependencies]
+gpui = { workspace = true, features = ["test-support"] }
+gpui-component = { workspace = true, features = ["test-support"] }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2 = "0.6"
+objc2-foundation = { version = "0.3", features = ["NSString"] }
+objc2-app-kit = { version = "0.3", features = ["NSApplication", "NSDockTile", "NSResponder", "NSAppearance"] }

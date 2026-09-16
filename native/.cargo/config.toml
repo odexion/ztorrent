@@ -1,0 +1,5 @@
+[env]
+# The oldest macOS the app supports, matching the packager's
+# minimum-system-version. The C++ in libtorrent and OpenSSL is compiled for it
+# too, so a build made on a newer Mac still starts on an older one.
+MACOSX_DEPLOYMENT_TARGET = "11.0"
