@@ -137,7 +137,8 @@ mod mac {
 mod win {
     use super::*;
     use aes_gcm::Aes256Gcm;
-    use aes_gcm::aead::{Aead, KeyInit, Nonce};
+    use aes_gcm::aead::generic_array::GenericArray;
+    use aes_gcm::aead::{AeadInPlace, KeyInit};
     use std::path::PathBuf;
     use std::sync::Mutex;
     use windows_sys::Win32::Foundation::LocalFree;
@@ -210,7 +211,9 @@ mod win {
             let mut nonce = [0u8; 12];
             getrandom::fill(&mut nonce).map_err(|e| anyhow::anyhow!("{e}"))?;
             let cipher = Aes256Gcm::new(&key.into());
-            let ct = cipher.encrypt(&Nonce::from(nonce), plain.as_bytes(), &[]).map_err(|_| anyhow::anyhow!("seal failed"))?;
+            // Chromium's v10 values carry no associated data.
+            let mut ct = plain.as_bytes().to_vec();
+            cipher.encrypt_in_place(GenericArray::from_slice(&nonce), &[], &mut ct).map_err(|_| anyhow::anyhow!("seal failed"))?;
             let mut out = PREFIX.to_vec();
             out.extend_from_slice(&nonce);
             out.extend(ct);
@@ -223,8 +226,8 @@ mod win {
             anyhow::ensure!(body.len() > 12 + 16, "value too short");
             let (nonce, ct) = body.split_at(12);
             let cipher = Aes256Gcm::new(&key.into());
-            let nonce: [u8; 12] = nonce.try_into()?;
-            let plain = cipher.decrypt(&Nonce::from(nonce), ct, &[]).map_err(|_| anyhow::anyhow!("wrong key or damaged value"))?;
+            let mut plain = ct.to_vec();
+            cipher.decrypt_in_place(GenericArray::from_slice(nonce), &[], &mut plain).map_err(|_| anyhow::anyhow!("wrong key or damaged value"))?;
             Ok(String::from_utf8(plain)?)
         }
     }

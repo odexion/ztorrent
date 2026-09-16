@@ -107,7 +107,7 @@ pub struct CopyText {
 }
 
 /// Cmd on macOS, Ctrl elsewhere, the way CmdOrCtrl read in the Electron menus.
-fn k(binding: &str) -> String {
+pub(crate) fn k(binding: &str) -> String {
     if cfg!(target_os = "macos") { binding.replace("mod-", "cmd-") } else { binding.replace("mod-", "ctrl-") }
 }
 

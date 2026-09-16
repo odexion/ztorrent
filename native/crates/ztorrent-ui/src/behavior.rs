@@ -3,6 +3,7 @@
 //! commands each one sends.
 
 use crate::actions::*;
+use crate::actions::k;
 use crate::bridge::{Bridge, Updates};
 use crate::workspace::Workspace;
 use gpui::{AppContext as _, Entity, Modifiers, TestAppContext, VisualTestContext};
@@ -210,15 +211,15 @@ fn keyboard_shortcuts(cx: &mut TestAppContext) {
     h.cx.simulate_keystrokes("down");
     h.settle();
     assert_eq!(h.selection(), vec!["b"]);
-    h.cx.simulate_keystrokes("cmd-r");
+    h.cx.simulate_keystrokes(&k("mod-r"));
     assert!(h.sent().iter().any(|c| matches!(c, Command::Start(_))), "cmd-r starts");
     h.cx.simulate_keystrokes("space");
     assert!(h.sent().iter().any(|c| matches!(c, Command::Pause(_))), "space pauses a running torrent");
-    h.cx.simulate_keystrokes("cmd-shift-l");
+    h.cx.simulate_keystrokes(&k("mod-shift-l"));
     assert!(h.sent().iter().any(|c| matches!(c, Command::ToggleAltSpeed)));
-    h.cx.simulate_keystrokes("cmd-l");
+    h.cx.simulate_keystrokes(&k("mod-l"));
     assert!(h.sent().iter().any(|c| matches!(c, Command::SetSettings(p) if p.contains_key("theme"))));
-    h.cx.simulate_keystrokes("cmd-a");
+    h.cx.simulate_keystrokes(&k("mod-a"));
     h.settle();
     assert_eq!(h.selection().len(), 3);
     h.cx.simulate_keystrokes("escape");
@@ -395,10 +396,17 @@ fn preferences_theme_dropdown_previews_and_applies(cx: &mut TestAppContext) {
     let bounds = h.cx.debug_bounds("dd-theme").expect("the theme dropdown is on the page");
     h.cx.simulate_mouse_down(bounds.center(), gpui::MouseButton::Left, Modifiers::none());
     h.settle();
-    // What the menu does with the chosen item.
-    h.cx.update(|window, cx| {
-        window.dispatch_action(Box::new(crate::dialogs::PickOption { field: "theme".into(), value: "graphite".into() }), cx)
-    });
+    // Choosing Dark. A native menu (macOS, Windows) dispatches the choice from
+    // the window's focus; this is what it does with it. Elsewhere the menu is a
+    // drawn popup that takes the focus itself: it is driven by keys -- Light,
+    // Dark, choose -- and dispatches to whatever held the focus when it opened.
+    if cfg!(any(target_os = "macos", target_os = "windows")) {
+        h.cx.update(|window, cx| {
+            window.dispatch_action(Box::new(crate::dialogs::PickOption { field: "theme".into(), value: "graphite".into() }), cx)
+        });
+    } else {
+        h.cx.simulate_keystrokes("down down enter");
+    }
     h.settle();
     assert!(dark(&mut h), "the choice reaches the sheet and previews");
 
