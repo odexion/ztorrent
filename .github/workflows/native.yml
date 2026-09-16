@@ -1,0 +1,200 @@
+name: native
+
+# The Rust + GPUI build of ztorrent, which releases from v0.5.0 on (build.yml
+# still builds the Electron app for main and for PRs, but no longer releases).
+#
+# Every push tests on macOS, Linux and Windows. Installers for all six
+# platform and architecture pairs are built when the workflow is run by hand,
+# and for a v* tag, which also publishes them. The artifact names are the ones
+# electron-builder used, so the Electron app's updater and scripts/install.sh
+# move existing installs across. A tag with a suffix (v0.6.0-beta.1) publishes a
+# prerelease, which `releases/latest` -- and so both of those -- skips.
+#
+# Each installer is standalone: libtorrent and OpenSSL are compiled from source
+# and linked in (crates/ztorrent-lt-sys/build.rs), and a check fails the job if
+# the packaged app still loads anything the system does not provide.
+
+on:
+  push:
+    branches: [main, rust-gpui]
+    tags: ['v*']
+    paths: ['native/**', 'sample-torrents/**', 'build/icon.*', '.github/workflows/native.yml', '.github/actions/native-setup/**']
+  pull_request:
+    paths: ['native/**', '.github/workflows/native.yml', '.github/actions/native-setup/**']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  BOOST_VERSION: '1.92.0'
+  # The packager's minimum-system-version; native/.cargo/config.toml sets it
+  # for local builds.
+  MACOSX_DEPLOYMENT_TARGET: '11.0'
+
+jobs:
+  test:
+    name: test (${{ matrix.name }})
+    runs-on: ${{ matrix.os }}
+    # One platform failing should not hide the others' results.
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: macos, os: macos-latest }
+          - { name: linux, os: ubuntu-22.04 }
+          - { name: windows, os: windows-latest }
+
+    defaults:
+      run:
+        shell: bash
+        working-directory: native
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: ./.github/actions/native-setup
+        with:
+          cache-key: test-${{ matrix.name }}
+
+      - name: Test
+        run: cargo test --locked -p ztorrent-core -p ztorrent-secrets -p ztorrent-lt-sys -p ztorrent-engine -p ztorrent-updater -p ztorrent-ui
+
+      # The window crate must not reach the engine: its only way in is the
+      # command set in ztorrent-core.
+      - name: Check the window cannot name the engine
+        run: |
+          if cargo tree -p ztorrent-ui --edges normal | grep -E 'ztorrent-(engine|lt-sys)'; then
+            echo 'ztorrent-ui depends on the engine'; exit 1
+          fi
+
+  package:
+    name: package (${{ matrix.name }})
+    needs: test
+    if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v')
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: mac-arm64, os: macos-latest, target: aarch64-apple-darwin, formats: dmg }
+          # Cross-built on the same Apple Silicon runner: Xcode's clang and
+          # openssl-src both target Intel from there.
+          - { name: mac-x64, os: macos-latest, target: x86_64-apple-darwin, formats: dmg }
+          - { name: win-x64, os: windows-latest, target: x86_64-pc-windows-msvc, formats: nsis }
+          - { name: win-arm64, os: windows-11-arm, target: aarch64-pc-windows-msvc, formats: nsis }
+          # 22.04's glibc, so the AppImage and .deb also start on older distributions.
+          - { name: linux-x64, os: ubuntu-22.04, target: x86_64-unknown-linux-gnu, formats: 'appimage,deb' }
+          - { name: linux-arm64, os: ubuntu-22.04-arm, target: aarch64-unknown-linux-gnu, formats: 'appimage,deb' }
+
+    defaults:
+      run:
+        shell: bash
+        working-directory: native
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: ./.github/actions/native-setup
+        with:
+          target: ${{ matrix.target }}
+          cache-key: package-${{ matrix.name }}
+
+      - name: Build
+        run: cargo build --release --locked -p ztorrent --target ${{ matrix.target }}
+
+      - name: Install cargo-packager
+        run: cargo install cargo-packager --locked --version 0.11.8
+
+      - name: Package
+        env:
+          # linuxdeploy is itself an AppImage, and runners have no FUSE to mount it.
+          APPIMAGE_EXTRACT_AND_RUN: '1'
+        run: cargo packager --release -p ztorrent --target ${{ matrix.target }} --formats ${{ matrix.formats }}
+
+      - name: Check the app carries its own libraries
+        run: sh scripts/check-standalone.sh ${{ matrix.target }}
+
+      - name: Name the installers
+        run: sh scripts/rename-artifacts.sh target/packages "$(sed -n 's/^version = "\(.*\)"$/\1/p' Cargo.toml | head -1)"
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: ztorrent-native-${{ matrix.name }}
+          path: |
+            native/target/packages/ztorrent-*.dmg
+            native/target/packages/ztorrent-*.exe
+            native/target/packages/ztorrent-*.AppImage
+            native/target/packages/ztorrent-*.deb
+          if-no-files-found: error
+          retention-days: 14
+
+  release:
+    name: release
+    needs: package
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          path: artifacts
+          pattern: ztorrent-native-*
+
+      - name: Collect installers
+        run: |
+          mkdir -p release
+          find artifacts -type f \
+            \( -name '*.dmg' -o -name '*.exe' -o -name '*.AppImage' -o -name '*.deb' \) \
+            -exec cp {} release/ \;
+          ls -lh release
+          test "$(ls release | wc -l)" -eq 8 || { echo 'expected 8 installers'; exit 1; }
+
+      # Every release opens with the one-line install, as build.yml's did: most
+      # people arrive at a release page from a link, and the notes have to
+      # stand on their own for them.
+      - name: Write the install header
+        run: |
+          cat > notes.md <<'EOF'
+          ## Install
+
+          macOS and Linux, in one line:
+
+          ```sh
+          curl -fsSL https://raw.githubusercontent.com/odexion/ztorrent/main/scripts/install.sh | sh
+          ```
+
+          Or take an installer from the assets below — the `.dmg` for macOS
+          (`arm64` for Apple Silicon, `x64` for Intel), the `.exe` for Windows,
+          the AppImage or `.deb` for Linux. Nothing else needs installing.
+
+          ztorrent is now a native app, rebuilt in Rust on GPUI. Torrents,
+          labels and preferences carry over from the Electron version. On
+          Windows, start ztorrent yourself once after this update.
+          EOF
+
+      # Upload into an existing release rather than failing on it, as build.yml
+      # did: a tag can already have one, made by hand or by an earlier attempt.
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # A suffixed tag (v0.6.0-beta.1) is a prerelease, which
+          # releases/latest -- the updater and install.sh -- skips.
+          pre=""
+          case "$GITHUB_REF_NAME" in *-*) pre="--prerelease" ;; esac
+          if gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "release $GITHUB_REF_NAME exists — uploading into it"
+            gh release upload "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --clobber release/*
+          else
+            gh release create "$GITHUB_REF_NAME" \
+              --repo "$GITHUB_REPOSITORY" \
+              --title "$GITHUB_REF_NAME" \
+              --notes-file notes.md \
+              --generate-notes \
+              $pre \
+              release/*
+          fi

@@ -1,0 +1,73 @@
+name: native setup
+description: >-
+  What the native build needs on a fresh runner: GPUI's system libraries on
+  Linux, Boost's headers, the Rust toolchain and a warm cargo cache. libtorrent
+  and OpenSSL are compiled from source by the build itself.
+
+inputs:
+  target:
+    description: Rust target triple to add; empty for the runner's own
+    default: ''
+  cache-key:
+    description: Keeps each job's cargo cache apart
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: GPUI's system libraries (Linux)
+      if: runner.os == 'Linux'
+      shell: bash
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y --no-install-recommends \
+          build-essential pkg-config perl make \
+          libxkbcommon-dev libxkbcommon-x11-dev libwayland-dev libvulkan-dev \
+          libx11-dev libx11-xcb-dev libxcb1-dev libxi-dev libxcursor-dev libxrandr-dev \
+          libfontconfig-dev libfreetype-dev
+
+    # ring compiles its C with clang for Windows on Arm.
+    - name: clang (Windows on Arm)
+      if: runner.os == 'Windows' && runner.arch == 'ARM64'
+      shell: bash
+      run: |
+        if ! command -v clang >/dev/null && [ ! -x "/c/Program Files/LLVM/bin/clang.exe" ]; then
+          choco install llvm -y --no-progress
+        fi
+        echo 'C:\Program Files\LLVM\bin' >> "$GITHUB_PATH"
+
+    # The same headers on every platform, instead of three package managers'
+    # different versions. libtorrent needs no compiled Boost library.
+    - uses: actions/cache@v5
+      id: boost
+      with:
+        path: ${{ runner.temp }}/boost-${{ env.BOOST_VERSION }}
+        key: boost-headers-${{ env.BOOST_VERSION }}-${{ runner.os }}
+
+    - name: Boost headers
+      if: steps.boost.outputs.cache-hit != 'true'
+      shell: bash
+      working-directory: ${{ runner.temp }}
+      # Relative paths only: Git's tar on Windows reads `D:` as a remote host.
+      run: |
+        curl -sSfL --retry 3 -o boost.tar.gz \
+          "https://github.com/boostorg/boost/releases/download/boost-${BOOST_VERSION}/boost-${BOOST_VERSION}-b2-nodocs.tar.gz"
+        tar -xzf boost.tar.gz "boost-${BOOST_VERSION}/boost"
+        rm boost.tar.gz
+
+    - name: Point the build at Boost
+      shell: bash
+      run: echo "BOOST_INCLUDE=${{ runner.temp }}/boost-${BOOST_VERSION}" >> "$GITHUB_ENV"
+
+    - uses: dtolnay/rust-toolchain@stable
+      with:
+        targets: ${{ inputs.target }}
+
+    - uses: actions/cache@v5
+      with:
+        path: |
+          ~/.cargo/registry
+          ~/.cargo/git
+          native/target
+        key: native-${{ inputs.cache-key }}-${{ hashFiles('native/Cargo.lock') }}
+        restore-keys: native-${{ inputs.cache-key }}-
