@@ -44,7 +44,9 @@ identifier = "dev.zaf4.ztorrent"
 category = "Utility"
 description = "A BitTorrent client for macOS, Windows and Linux"
 authors = ["zaf4 <zafermolbio@gmail.com>"]
-icons = ["../../../build/icon.png", "../../../build/icon.icns", "icons/icon.ico"]
+# The .deb installs each PNG under hicolor/<size>/apps; icon themes have no
+# 1024x1024 directory, so the 256 one is what Linux actually finds.
+icons = ["../../../build/icon.png", "icons/256x256.png", "../../../build/icon.icns", "icons/icon.ico"]
 out-dir = "../../target/packages"
 resources = [{ src = "../../../sample-torrents", target = "sample-torrents" }]
 formats = ["dmg", "nsis", "appimage", "deb"]
