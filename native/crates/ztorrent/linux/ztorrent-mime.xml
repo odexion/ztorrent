@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Installed by the .deb to /usr/share/mime/packages, where update-mime-database
+  (a dpkg trigger) picks it up. It gives .torrent files ztorrent's icon, the one
+  the package installs under hicolor/*/apps; without it file managers draw the
+  icon theme's own, or a generic one.
+-->
+<mime-info xmlns="http://www.freedesktop.org/standards/shared-mime-info">
+  <mime-type type="application/x-bittorrent">
+    <comment>BitTorrent Document</comment>
+    <icon name="ztorrent"/>
+    <glob pattern="*.torrent"/>
+  </mime-type>
+</mime-info>

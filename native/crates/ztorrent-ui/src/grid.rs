@@ -12,6 +12,8 @@ use std::ops::Range;
 use ztorrent_core::columns::{self, ALL_COLUMNS, ColumnDef};
 use ztorrent_core::{Row, State, bar_kind, fmt, state_icon, status_text};
 
+const HEADER_H: f32 = 32.;
+
 pub struct DragChip(pub SharedString);
 
 impl Render for DragChip {
@@ -42,17 +44,21 @@ impl Workspace {
         let count = self.state.visible_rows().len();
         self.state.list_focused = self.list_focus.contains_focused(window, cx);
 
-        let body = if count == 0 {
-            self.render_empty(&p).into_any_element()
-        } else {
+        let body = (count > 0).then(|| {
             uniform_list("torrents", count, cx.processor(|this, range: Range<usize>, _window, cx| this.render_rows(range, cx)))
                 .track_scroll(&self.list_scroll)
                 .size_full()
-                .into_any_element()
-        };
+        });
+        // The empty state sits over the visible pane, below the header, not in
+        // the scrolled area: that is as wide as every column together, and
+        // centring in it put the message off to the right.
+        let empty = (count == 0).then(|| {
+            div().absolute().top(px(HEADER_H)).left_0().right_0().bottom_0().child(self.render_empty(&p))
+        });
 
         div()
             .id("grid")
+            .relative()
             .track_focus(&self.list_focus)
             .key_context("TorrentList")
             .flex()
@@ -97,9 +103,10 @@ impl Workspace {
                             .min_w(px(total))
                             .w_full()
                             .child(self.render_header(&p, &cols, cx))
-                            .child(div().flex_1().min_h_0().pt(px(4.)).child(body)),
+                            .child(div().flex_1().min_h_0().pt(px(4.)).children(body)),
                     ),
             )
+            .children(empty)
     }
 
     fn render_empty(&self, p: &Palette) -> Div {
@@ -139,7 +146,7 @@ impl Workspace {
     }
 
     fn render_header(&self, p: &Palette, cols: &[&'static ColumnDef], cx: &mut Context<Self>) -> impl IntoElement {
-        let mut head = div().flex().flex_none().h(px(32.)).border_b_1().border_color(p.line).bg(p.bg);
+        let mut head = div().flex().flex_none().h(px(HEADER_H)).border_b_1().border_color(p.line).bg(p.bg);
         for col in cols {
             let key = col.key;
             let w = self.state.width(key);

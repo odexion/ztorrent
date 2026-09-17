@@ -55,6 +55,8 @@ file-associations = [
 
 [package.metadata.packager.macos]
 minimum-system-version = "11.0"
+# Declares .torrent's type and gives it the app's icon; see the file.
+info-plist-path = "Info.plist"
 # Ad-hoc: no Developer ID, as with the Electron releases. Apple Silicon refuses
 # to start a bundle with no signature at all ("is damaged"), and one signed
 # as a whole is what `xattr -dr com.apple.quarantine` then lets through.
@@ -93,6 +95,8 @@ SectionEnd
 
 [package.metadata.packager.deb]
 section = "net"
+# .torrent files take the app's icon; see the file.
+files = { "linux/ztorrent-mime.xml" = "/usr/share/mime/packages/ztorrent.xml" }
 # What the binary links (ldd) and what GPUI opens at run time: Wayland, and
 # Vulkan to draw. libtorrent and OpenSSL are inside the binary. glibc 2.35 is
 # Ubuntu 22.04's, where the release is built.
