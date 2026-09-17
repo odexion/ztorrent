@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The SignPath artifact configuration for ztorrent: paste it into the project's
+  default artifact configuration on signpath.io. native.yml uploads one .exe at
+  a time (ztorrent.exe before packaging, then the installer), and GitHub
+  zips each upload, so this signs the single .exe at the root of that zip.
+-->
+<artifact-configuration xmlns="http://signpath.io/artifact-configuration/v1">
+  <zip-file>
+    <pe-file-set>
+      <include path="*.exe" min-matches="1" max-matches="1" />
+      <for-each>
+        <authenticode-sign />
+      </for-each>
+    </pe-file-set>
+  </zip-file>
+</artifact-configuration>

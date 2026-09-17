@@ -93,6 +93,12 @@ jobs:
         shell: bash
         working-directory: native
 
+    # Windows builds of a release tag are signed through SignPath once the
+    # organization id is set as a repository variable (native/README.md,
+    # "Signing"); until then, and for every other build, they ship unsigned.
+    env:
+      SIGN: ${{ startsWith(matrix.name, 'win-') && startsWith(github.ref, 'refs/tags/v') && vars.SIGNPATH_ORGANIZATION_ID != '' }}
+
     steps:
       - uses: actions/checkout@v7
 
@@ -103,6 +109,36 @@ jobs:
 
       - name: Build
         run: cargo build --release --locked -p ztorrent --target ${{ matrix.target }}
+
+      # The app is signed before it goes into the installer, and the installer
+      # after, so both carry the signature. Each is one .exe in its own upload,
+      # which native/signing/artifact-configuration.xml matches.
+      - name: Upload the app for signing
+        id: unsigned-app
+        if: env.SIGN == 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: unsigned-app-${{ matrix.name }}
+          path: native/target/${{ matrix.target }}/release/ztorrent.exe
+          if-no-files-found: error
+          retention-days: 1
+
+      - name: Sign the app
+        if: env.SIGN == 'true'
+        uses: signpath/github-action-submit-signing-request@v3
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: ${{ vars.SIGNPATH_PROJECT_SLUG }}
+          signing-policy-slug: ${{ vars.SIGNPATH_POLICY_SLUG }}
+          github-artifact-id: ${{ steps.unsigned-app.outputs.artifact-id }}
+          # A release policy waits for an approver, who may take a while.
+          wait-for-completion-timeout-in-seconds: 3600
+          output-artifact-directory: native/target/signed-app
+
+      - name: Use the signed app
+        if: env.SIGN == 'true'
+        run: cp target/signed-app/ztorrent.exe target/${{ matrix.target }}/release/ztorrent.exe
 
       - name: Install cargo-packager
         run: cargo install cargo-packager --locked --version 0.11.8
@@ -118,6 +154,32 @@ jobs:
 
       - name: Name the installers
         run: sh scripts/rename-artifacts.sh target/packages "$(sed -n 's/^version = "\(.*\)"$/\1/p' Cargo.toml | head -1)"
+
+      - name: Upload the installer for signing
+        id: unsigned-installer
+        if: env.SIGN == 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: unsigned-installer-${{ matrix.name }}
+          path: native/target/packages/ztorrent-*.exe
+          if-no-files-found: error
+          retention-days: 1
+
+      - name: Sign the installer
+        if: env.SIGN == 'true'
+        uses: signpath/github-action-submit-signing-request@v3
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: ${{ vars.SIGNPATH_PROJECT_SLUG }}
+          signing-policy-slug: ${{ vars.SIGNPATH_POLICY_SLUG }}
+          github-artifact-id: ${{ steps.unsigned-installer.outputs.artifact-id }}
+          wait-for-completion-timeout-in-seconds: 3600
+          output-artifact-directory: native/target/signed-installer
+
+      - name: Use the signed installer
+        if: env.SIGN == 'true'
+        run: cp target/signed-installer/ztorrent-*.exe target/packages/
 
       - uses: actions/upload-artifact@v7
         with:
@@ -157,6 +219,8 @@ jobs:
       # people arrive at a release page from a link, and the notes have to
       # stand on their own for them.
       - name: Write the install header
+        env:
+          SIGNPATH_ORGANIZATION_ID: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
         run: |
           cat > notes.md <<'EOF'
           ## Install
@@ -175,6 +239,18 @@ jobs:
           labels and preferences carry over from the Electron version. On
           Windows, start ztorrent yourself once after this update.
           EOF
+          # SignPath Foundation asks for its policy on every release page.
+          if [ -n "$SIGNPATH_ORGANIZATION_ID" ]; then
+            cat >> notes.md <<'EOF'
+
+          ## Code signing policy
+
+          Free code signing provided by [SignPath.io](https://about.signpath.io),
+          certificate by [SignPath Foundation](https://signpath.org). Who may
+          sign, and what ztorrent sends over the network, are in the
+          [README](https://github.com/odexion/ztorrent#code-signing-policy).
+          EOF
+          fi
 
       # Upload into an existing release rather than failing on it, as build.yml
       # did: a tag can already have one, made by hand or by an earlier attempt.

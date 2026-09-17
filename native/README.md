@@ -64,6 +64,31 @@ suffix (`v0.6.0-beta.1`) publishes a prerelease, which both of them skip.
 On Windows, the Electron updater runs the installer without `/R`, so after
 that one update ztorrent has to be started by hand; later updates restart it.
 
+### Signing
+
+The Windows app and installer are signed through
+[SignPath Foundation](https://signpath.org), which is free for open-source
+projects, so that SmartScreen does not call them unknown. For a release tag,
+the package job uploads `ztorrent.exe`, waits for SignPath to sign it,
+packages it, then does the same for the installer. Until the settings below
+exist, Windows builds are published unsigned, as before.
+
+Once the project is accepted on signpath.io:
+
+1. Add GitHub.com as a trusted build system, link it to the project, and
+   install the SignPath GitHub App on this repository.
+2. Paste `signing/artifact-configuration.xml` into the project's default
+   artifact configuration.
+3. In the repository's Actions settings, add the secret
+   `SIGNPATH_API_TOKEN` (a submitter's API token) and the variables
+   `SIGNPATH_ORGANIZATION_ID`, `SIGNPATH_PROJECT_SLUG` and
+   `SIGNPATH_POLICY_SLUG` (`release-signing` for the foundation's certificate).
+
+A release-signing request waits for an approver to accept it on signpath.io,
+twice per Windows architecture; each wait times out after an hour. The policy
+the foundation requires is at the end of the top-level README, and the
+release notes link to it.
+
 ## Running
 
 ```bash

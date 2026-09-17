@@ -97,14 +97,32 @@ of the well-shared samples in `sample-torrents/` to check the app itself is fine
 
 ## Anything else
 
-Built with [WebTorrent](https://webtorrent.io) and [Electron](https://electronjs.org).
+Built with [libtorrent](https://libtorrent.org) and [GPUI](https://www.gpui.rs), in Rust.
 Developer notes — building, architecture, privacy internals — are in
 [docs/development.md](docs/development.md).
 
 MIT licensed. Please only share files you have the right to share.
 
-[mac-arm]: https://github.com/odexion/ztorrent/releases/download/v0.4.0/ztorrent-0.4.0-mac-arm64.dmg
-[mac-x64]: https://github.com/odexion/ztorrent/releases/download/v0.4.0/ztorrent-0.4.0-mac-x64.dmg
-[win]: https://github.com/odexion/ztorrent/releases/download/v0.4.0/ztorrent-0.4.0-win-x64.exe
-[linux-appimage]: https://github.com/odexion/ztorrent/releases/download/v0.4.0/ztorrent-0.4.0-linux-x86_64.AppImage
-[linux-deb]: https://github.com/odexion/ztorrent/releases/download/v0.4.0/ztorrent-0.4.0-linux-amd64.deb
+## Code signing policy
+
+Free code signing provided by [SignPath.io](https://about.signpath.io),
+certificate by [SignPath Foundation](https://signpath.org).
+
+The Windows app and installer are signed from this repository's GitHub Actions
+builds, and only for a release tag.
+
+- Committers and reviewers: [the odexion members](https://github.com/orgs/odexion/people)
+- Approvers: [@Zaf4](https://github.com/Zaf4)
+
+Changes from anyone else are merged only after a committer has reviewed them.
+
+**Privacy.** ztorrent connects to other computers only to do what you ask of it:
+to the trackers, peers and DHT of the torrents you add, and to GitHub, to check
+for a new version (turn that off in **Preferences ▸ General ▸ Updates**). It
+sends no usage data or other information anywhere.
+
+[mac-arm]: https://github.com/odexion/ztorrent/releases/download/v0.5.1/ztorrent-0.5.1-mac-arm64.dmg
+[mac-x64]: https://github.com/odexion/ztorrent/releases/download/v0.5.1/ztorrent-0.5.1-mac-x64.dmg
+[win]: https://github.com/odexion/ztorrent/releases/download/v0.5.1/ztorrent-0.5.1-win-x64.exe
+[linux-appimage]: https://github.com/odexion/ztorrent/releases/download/v0.5.1/ztorrent-0.5.1-linux-x86_64.AppImage
+[linux-deb]: https://github.com/odexion/ztorrent/releases/download/v0.5.1/ztorrent-0.5.1-linux-amd64.deb
