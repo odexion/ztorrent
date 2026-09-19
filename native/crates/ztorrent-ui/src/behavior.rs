@@ -381,6 +381,19 @@ fn preferences_apply_sends_every_field_with_minimums(cx: &mut TestAppContext) {
     assert!(!h.dialog_open());
 }
 
+#[gpui::test]
+fn preferences_shortcut_does_not_stack_sheets(cx: &mut TestAppContext) {
+    let mut h = harness(cx, boot());
+    h.act(Preferences);
+    h.act(Preferences);
+    h.act(AddUrl);
+    assert!(h.dialog_open());
+    h.cx.executor().advance_clock(std::time::Duration::from_secs(1));
+    h.cx.simulate_keystrokes("escape");
+    h.settle();
+    assert!(!h.dialog_open(), "one Escape closes the only sheet");
+}
+
 /// A sheet's dropdown is a native menu whose choice comes back as an action,
 /// dispatched from whatever holds the focus -- normally the dialog around the
 /// sheet, above the sheet's own handler. Pressing the dropdown has to put the

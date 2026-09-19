@@ -7,6 +7,7 @@ use crate::theme::{FONT_SIZE, Theme};
 use gpui::prelude::*;
 use gpui::*;
 use gpui_component::input::{InputEvent, InputState};
+use gpui_component::WindowExt as _;
 use gpui_component::native_menu::NativeMenu;
 use std::path::PathBuf;
 use ztorrent_core::command::{Bootstrap, Command, TorrentSource};
@@ -531,9 +532,24 @@ impl Render for Workspace {
                     workspace.update(cx, |this, cx| this.add_files(files, window, cx));
                 });
             }))
-            .on_action(cx.listener(|_, _: &AddUrl, window, cx| crate::dialogs::open_url(window, cx)))
-            .on_action(cx.listener(|_, _: &CreateTorrent, window, cx| crate::dialogs::open_create(window, cx)))
-            .on_action(cx.listener(|this, _: &Preferences, window, cx| crate::dialogs::open_preferences(this.state.settings.clone(), window, cx)))
+            // A sheet's shortcut while a sheet is up leaves it be, the way a
+            // Mac app's Cmd+, brings back its one Settings window, instead of
+            // stacking another copy on top.
+            .on_action(cx.listener(|_, _: &AddUrl, window, cx| {
+                if !window.has_active_dialog(cx) {
+                    crate::dialogs::open_url(window, cx)
+                }
+            }))
+            .on_action(cx.listener(|_, _: &CreateTorrent, window, cx| {
+                if !window.has_active_dialog(cx) {
+                    crate::dialogs::open_create(window, cx)
+                }
+            }))
+            .on_action(cx.listener(|this, _: &Preferences, window, cx| {
+                if !window.has_active_dialog(cx) {
+                    crate::dialogs::open_preferences(this.state.settings.clone(), window, cx)
+                }
+            }))
             .on_action(cx.listener(|this, _: &About, window, cx| {
                 let _ = window.prompt(
                     PromptLevel::Info,
