@@ -365,28 +365,82 @@ fn add_from_url_turns_an_info_hash_into_a_magnet(cx: &mut TestAppContext) {
 }
 
 #[gpui::test]
-fn preferences_apply_sends_every_field_with_minimums(cx: &mut TestAppContext) {
+fn preferences_apply_sends_only_what_changed(cx: &mut TestAppContext) {
     let mut h = harness(cx, boot());
     h.act(Preferences);
     assert!(h.dialog_open());
     if let Some(Command::Interfaces(reply)) = h.sent().into_iter().find(|c| matches!(c, Command::Interfaces(_))) {
         let _ = reply.send(vec![NetInterface { name: "en0".into(), address: "192.168.1.2".into() }]);
     }
+    h.click("nav-Bandwidth");
+    h.click("field-maxDownloadRate");
+    h.cx.simulate_keystrokes(&k("mod-a"));
+    h.cx.simulate_input("750");
     h.click("prefs-apply");
     let patch = h.sent().into_iter().find_map(|c| if let Command::SetSettings(p) = c { Some(p) } else { None }).expect("Apply saves");
-    assert_eq!(patch["downloadPath"], "/downloads");
-    assert!(patch["globalMaxConnections"].as_u64().unwrap() >= 10);
-    assert_eq!(patch["maxUploadSlots"], 4);
-    assert!(patch.contains_key("enableDHT") && patch.contains_key("proxyPassword"));
+    assert_eq!(patch["maxDownloadRate"], 750);
+    assert_eq!(patch.len(), 1, "only what was changed: {patch:?}");
     assert!(!h.dialog_open());
 }
 
 #[gpui::test]
-fn preferences_shortcut_does_not_stack_sheets(cx: &mut TestAppContext) {
+fn preferences_apply_with_nothing_changed_saves_nothing(cx: &mut TestAppContext) {
     let mut h = harness(cx, boot());
+    h.act(Preferences);
+    h.sent();
+    h.click("prefs-apply");
+    assert!(!h.sent().iter().any(|c| matches!(c, Command::SetSettings(_))));
+    assert!(!h.dialog_open());
+}
+
+/// Cmd+Shift+L and Cmd+L change settings the open sheet also holds; Apply must
+/// not put them back.
+#[gpui::test]
+fn preferences_apply_keeps_settings_changed_under_the_sheet(cx: &mut TestAppContext) {
+    let mut h = harness(cx, boot());
+    h.act(Preferences);
+    h.act(ToggleAltSpeed);
+    h.act(ToggleTheme);
+    let sent = h.sent();
+    assert!(sent.iter().any(|c| matches!(c, Command::ToggleAltSpeed)));
+    assert!(sent.iter().any(|c| matches!(c, Command::SetSettings(p) if p["theme"] == "graphite")));
+    h.events.send(Event::SettingsChanged(Settings { download_path: "/downloads".into(), theme: "graphite".into(), alt_speed_enabled: true, ..Default::default() })).unwrap();
+    h.settle();
+    h.click("prefs-apply");
+    assert!(!h.sent().iter().any(|c| matches!(c, Command::SetSettings(_))), "nothing changed in the sheet");
+}
+
+#[gpui::test]
+fn preferences_cancel_restores_the_saved_theme(cx: &mut TestAppContext) {
+    let mut h = harness(cx, boot());
+    let dark = |h: &mut Harness| h.cx.update(|_, cx| cx.global::<crate::theme::Theme>().dark);
+    h.act(Preferences);
+    h.act(ToggleTheme);
+    h.events.send(Event::SettingsChanged(Settings { download_path: "/downloads".into(), theme: "graphite".into(), ..Default::default() })).unwrap();
+    h.settle();
+    assert!(dark(&mut h));
+    h.cx.executor().advance_clock(std::time::Duration::from_secs(1));
+    h.cx.simulate_keystrokes("escape");
+    h.settle();
+    assert!(!h.dialog_open());
+    assert!(dark(&mut h), "Cancel keeps the theme saved under the sheet");
+}
+
+/// The menu bar and the window's shortcuts still reach the window under a
+/// sheet; none of them stacks another sheet on it.
+#[gpui::test]
+fn sheet_commands_do_not_stack_sheets(cx: &mut TestAppContext) {
+    let mut h = harness(cx, boot());
+    h.tick(rows());
+    h.act(SelectDown);
     h.act(Preferences);
     h.act(Preferences);
     h.act(AddUrl);
+    h.act(CreateTorrent);
+    h.act(Properties);
+    h.act(NewLabel);
+    h.act(CustomizeFirstLabel);
+    h.act(CustomizeLabel { name: "movie".into() });
     assert!(h.dialog_open());
     h.cx.executor().advance_clock(std::time::Duration::from_secs(1));
     h.cx.simulate_keystrokes("escape");

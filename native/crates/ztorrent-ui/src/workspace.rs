@@ -380,6 +380,9 @@ impl Workspace {
     }
 
     pub fn new_label(&mut self, ids: Option<Vec<String>>, window: &mut Window, cx: &mut Context<Self>) {
+        if sheet_up(window, cx) {
+            return;
+        }
         let ids = ids.unwrap_or_else(|| self.ids());
         crate::dialogs::prompt(window, cx, "New Label", "Label name:", "", move |name, cx| {
             if !ids.is_empty() {
@@ -526,27 +529,27 @@ impl Render for Workspace {
             .on_mouse_move(cx.listener(Self::on_mouse_move))
             .on_mouse_up(MouseButton::Left, cx.listener(|this, _, _, cx| this.end_resize(cx)))
             .on_action(cx.listener(|_, _: &AddTorrent, window, cx| {
+                if sheet_up(window, cx) {
+                    return;
+                }
                 let dialog = rfd::AsyncFileDialog::new().set_title("Add Torrent").add_filter("Torrent Files", &["torrent"]);
                 let workspace = cx.entity();
                 crate::dialogs::pick(window, cx, crate::dialogs::Pick::Files, dialog, move |files, window, cx| {
                     workspace.update(cx, |this, cx| this.add_files(files, window, cx));
                 });
             }))
-            // A sheet's shortcut while a sheet is up leaves it be, the way a
-            // Mac app's Cmd+, brings back its one Settings window, instead of
-            // stacking another copy on top.
             .on_action(cx.listener(|_, _: &AddUrl, window, cx| {
-                if !window.has_active_dialog(cx) {
+                if !sheet_up(window, cx) {
                     crate::dialogs::open_url(window, cx)
                 }
             }))
             .on_action(cx.listener(|_, _: &CreateTorrent, window, cx| {
-                if !window.has_active_dialog(cx) {
+                if !sheet_up(window, cx) {
                     crate::dialogs::open_create(window, cx)
                 }
             }))
             .on_action(cx.listener(|this, _: &Preferences, window, cx| {
-                if !window.has_active_dialog(cx) {
+                if !sheet_up(window, cx) {
                     crate::dialogs::open_preferences(this.state.settings.clone(), window, cx)
                 }
             }))
@@ -594,6 +597,9 @@ impl Render for Workspace {
                 });
             }))
             .on_action(cx.listener(|this, _: &Properties, window, cx| {
+                if sheet_up(window, cx) {
+                    return;
+                }
                 if let Some(row) = this.single().and_then(|id| this.state.row(&id).cloned()) {
                     let details = this.state.details.clone().filter(|d| d.id == row.id);
                     crate::dialogs::open_properties(row, details, window, cx);
@@ -607,10 +613,16 @@ impl Render for Workspace {
             .on_action(cx.listener(|this, _: &NewLabel, window, cx| this.new_label(None, window, cx)))
             .on_action(cx.listener(|this, a: &SetLabel, _, cx| send(cx, Command::SetLabel { ids: this.ids(), label: a.label.clone() })))
             .on_action(cx.listener(|this, a: &CustomizeLabel, window, cx| {
+                if sheet_up(window, cx) {
+                    return;
+                }
                 let current = this.state.label_styles.get(&a.name).cloned();
                 crate::dialogs::open_label_style(a.name.clone(), current, window, cx);
             }))
             .on_action(cx.listener(|this, _: &CustomizeFirstLabel, window, cx| {
+                if sheet_up(window, cx) {
+                    return;
+                }
                 if let Some(name) = this.state.labels.first().cloned() {
                     let current = this.state.label_styles.get(&name).cloned();
                     crate::dialogs::open_label_style(name, current, window, cx);
@@ -700,4 +712,13 @@ impl Render for Workspace {
             .drag_over::<ExternalPaths>(move |s, _, _, _| s.border_2().border_color(accent))
             .child(div().hidden().child(bridge::marker()))
     }
+}
+
+/// Whether a sheet is already up. A command that opens a sheet leaves it be,
+/// the way a Mac app's Cmd+, brings back its one Settings window, instead of
+/// stacking another copy on top: the menu bar and the window's shortcuts still
+/// reach the window under a sheet. A torrent handed over from outside is the
+/// exception -- its Add sheet stacks rather than being dropped.
+fn sheet_up(window: &mut Window, cx: &mut App) -> bool {
+    window.has_active_dialog(cx)
 }

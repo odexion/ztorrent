@@ -907,12 +907,11 @@ pub fn open_preferences<V: 'static>(settings: Settings, window: &mut Window, cx:
                 false
             })
             .on_close(move |_, _, cx| {
-            // The theme was previewed live; Cancel puts it back.
-            if let Some(s) = revert.upgrade() {
-                let (applied, original) = { let r = s.read(cx); (r.applied, r.original.clone()) };
-                if !applied {
-                    crate::apply_theme(&original, cx);
-                }
+            // The theme was previewed live; Cancel puts back the saved one --
+            // as it is now, since Cmd+L may have changed it under the sheet.
+            if revert.upgrade().is_some_and(|s| !s.read(cx).applied) {
+                let saved = cx.global::<Library>().settings.clone();
+                crate::apply_theme(&saved, cx);
             }
         })
     });
@@ -937,8 +936,22 @@ impl PrefsSheet {
             patch.insert(key.into(), n.max(min).into());
         }
         patch.remove("proxyPasswordEnc");
+        // Only what was changed here: the rest of the draft is the settings as
+        // they were when the sheet opened, and saving it would undo whatever
+        // changed since -- Cmd+Shift+L's alternate speeds, Cmd+L's theme.
+        let original = match serde_json::to_value(&self.original) {
+            Ok(serde_json::Value::Object(m)) => m,
+            _ => Default::default(),
+        };
+        patch.retain(|key, value| match (original.get(key), value) {
+            // 2 typed into a field is 2.0 in a float setting.
+            (Some(a), b) if a.is_number() && b.is_number() => a.as_f64() != b.as_f64(),
+            (a, b) => a != Some(b),
+        });
         self.applied = true;
-        send(cx, Command::SetSettings(patch));
+        if !patch.is_empty() {
+            send(cx, Command::SetSettings(patch));
+        }
         window.close_dialog(cx);
     }
 
@@ -952,7 +965,7 @@ impl PrefsSheet {
     }
 
     fn number(&self, p: &Palette, key: &'static str, label: &str, suffix: &str) -> impl IntoElement {
-        frow(p, label, div().flex().items_center().gap(px(8.)).child(div().w(px(92.)).child(Input::new(&self.inputs[key]))).child(div().text_color(p.ink_dim).child(suffix.to_string())))
+        frow(p, label, div().flex().items_center().gap(px(8.)).child(div().w(px(92.)).debug_selector(move || format!("field-{key}")).child(Input::new(&self.inputs[key]))).child(div().text_color(p.ink_dim).child(suffix.to_string())))
     }
 }
 
