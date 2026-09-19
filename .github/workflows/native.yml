@@ -96,8 +96,10 @@ jobs:
     # Windows builds of a release tag are signed through SignPath once the
     # organization id is set as a repository variable (native/README.md,
     # "Signing"); until then, and for every other build, they ship unsigned.
+    # Not plain SIGN: linuxdeploy's AppImage plugin GPG-signs whenever SIGN is
+    # set at all, "false" included, and fails for want of a key.
     env:
-      SIGN: ${{ startsWith(matrix.name, 'win-') && startsWith(github.ref, 'refs/tags/v') && vars.SIGNPATH_ORGANIZATION_ID != '' }}
+      SIGNPATH_SIGN: ${{ startsWith(matrix.name, 'win-') && startsWith(github.ref, 'refs/tags/v') && vars.SIGNPATH_ORGANIZATION_ID != '' }}
 
     steps:
       - uses: actions/checkout@v7
@@ -115,7 +117,7 @@ jobs:
       # which native/signing/artifact-configuration.xml matches.
       - name: Upload the app for signing
         id: unsigned-app
-        if: env.SIGN == 'true'
+        if: env.SIGNPATH_SIGN == 'true'
         uses: actions/upload-artifact@v7
         with:
           name: unsigned-app-${{ matrix.name }}
@@ -124,7 +126,7 @@ jobs:
           retention-days: 1
 
       - name: Sign the app
-        if: env.SIGN == 'true'
+        if: env.SIGNPATH_SIGN == 'true'
         uses: signpath/github-action-submit-signing-request@v3
         with:
           api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
@@ -137,7 +139,7 @@ jobs:
           output-artifact-directory: native/target/signed-app
 
       - name: Use the signed app
-        if: env.SIGN == 'true'
+        if: env.SIGNPATH_SIGN == 'true'
         run: cp target/signed-app/ztorrent.exe target/${{ matrix.target }}/release/ztorrent.exe
 
       - name: Install cargo-packager
@@ -157,7 +159,7 @@ jobs:
 
       - name: Upload the installer for signing
         id: unsigned-installer
-        if: env.SIGN == 'true'
+        if: env.SIGNPATH_SIGN == 'true'
         uses: actions/upload-artifact@v7
         with:
           name: unsigned-installer-${{ matrix.name }}
@@ -166,7 +168,7 @@ jobs:
           retention-days: 1
 
       - name: Sign the installer
-        if: env.SIGN == 'true'
+        if: env.SIGNPATH_SIGN == 'true'
         uses: signpath/github-action-submit-signing-request@v3
         with:
           api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
@@ -178,7 +180,7 @@ jobs:
           output-artifact-directory: native/target/signed-installer
 
       - name: Use the signed installer
-        if: env.SIGN == 'true'
+        if: env.SIGNPATH_SIGN == 'true'
         run: cp target/signed-installer/ztorrent-*.exe target/packages/
 
       - uses: actions/upload-artifact@v7
