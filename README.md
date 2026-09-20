@@ -31,6 +31,18 @@ Prefer the terminal? On macOS and Linux this does the whole thing for you:
 curl -fsSL https://raw.githubusercontent.com/odexion/ztorrent/main/scripts/install.sh | sh
 ```
 
+On Windows, in PowerShell:
+
+```powershell
+powershell -ExecutionPolicy Bypass -c "irm https://raw.githubusercontent.com/odexion/ztorrent/main/scripts/install.ps1 | iex"
+```
+
+That one installs for your user only, so it never asks for administrator rights,
+and it checks the download against the SHA-256 GitHub publishes for it. It does
+not turn off SmartScreen or Defender, and it doesn't need to: the warning below
+is what a *browser* download earns, and a file fetched this way was never marked
+as one.
+
 All downloads are on the [releases page](https://github.com/odexion/ztorrent/releases).
 
 ### First time you open it
