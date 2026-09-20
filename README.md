@@ -1,7 +1,13 @@
+<p align="center">
+  <img src="docs/images/logo.png" alt="" width="128">
+</p>
+
 # ztorrent
 
 A free BitTorrent client for macOS, Windows and Linux. Open a torrent, watch it
 download, find your files in your Downloads folder.
+
+![The ztorrent window, downloading Sintel, Tears of Steel, Big Buck Bunny and a Debian installer image](docs/images/screenshot.png)
 
 ## Install
 
