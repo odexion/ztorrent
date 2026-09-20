@@ -7,9 +7,28 @@
 A free BitTorrent client for macOS, Windows and Linux. Open a torrent, watch it
 download, find your files in your Downloads folder.
 
+## Install it in one line
+
+**macOS and Linux**
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/odexion/ztorrent/main/scripts/install.sh | sh
+```
+
+**Windows** — in PowerShell
+
+```powershell
+powershell -ExecutionPolicy Bypass -c "irm https://raw.githubusercontent.com/odexion/ztorrent/main/scripts/install.ps1 | iex"
+```
+
+Neither needs administrator rights. The Windows one installs for your user only
+and checks the download against the SHA-256 GitHub publishes for it; it turns
+nothing off in Windows to do that. The warning further down is what a *browser*
+download earns, and a file fetched this way was never marked as one.
+
 ![The ztorrent window, downloading Sintel, Tears of Steel, Big Buck Bunny and a Debian installer image](docs/images/screenshot.png)
 
-## Install
+## Or download it yourself
 
 **macOS** — download for [Apple silicon][mac-arm] or [Intel][mac-x64].
 
@@ -24,24 +43,6 @@ Run it and follow the prompts.
 and Ubuntu.
 
 Make the AppImage executable (right-click ▸ Properties ▸ Permissions) and double-click it.
-
-Prefer the terminal? On macOS and Linux this does the whole thing for you:
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/odexion/ztorrent/main/scripts/install.sh | sh
-```
-
-On Windows, in PowerShell:
-
-```powershell
-powershell -ExecutionPolicy Bypass -c "irm https://raw.githubusercontent.com/odexion/ztorrent/main/scripts/install.ps1 | iex"
-```
-
-That one installs for your user only, so it never asks for administrator rights,
-and it checks the download against the SHA-256 GitHub publishes for it. It does
-not turn off SmartScreen or Defender, and it doesn't need to: the warning below
-is what a *browser* download earns, and a file fetched this way was never marked
-as one.
 
 All downloads are on the [releases page](https://github.com/odexion/ztorrent/releases).
 
