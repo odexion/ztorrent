@@ -80,6 +80,6 @@ runs:
         path: |
           ~/.cargo/registry
           ~/.cargo/git
-          native/target
-        key: native-${{ inputs.cache-key }}-${{ hashFiles('native/Cargo.lock') }}
+          target
+        key: native-${{ inputs.cache-key }}-${{ hashFiles('Cargo.lock') }}
         restore-keys: native-${{ inputs.cache-key }}-

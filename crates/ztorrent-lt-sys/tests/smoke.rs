@@ -2,7 +2,7 @@ use std::sync::{Arc, Mutex};
 use ztorrent_lt_sys::*;
 
 fn sample(name: &str) -> Vec<u8> {
-    let path = concat!(env!("CARGO_MANIFEST_DIR"), "/../../../sample-torrents/");
+    let path = concat!(env!("CARGO_MANIFEST_DIR"), "/../../sample-torrents/");
     std::fs::read(format!("{path}{name}")).expect("sample torrent")
 }
 

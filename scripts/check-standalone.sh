@@ -1,7 +1,7 @@
 #!/bin/sh
 # Fails when a packaged build still loads a library from outside the system --
 # Homebrew's libtorrent or OpenSSL, say -- that the machines it is installed on
-# will not have. Run from native/, after cargo packager.
+# will not have. Run from the repository root, after cargo packager.
 #
 #   sh scripts/check-standalone.sh <target triple> [package folder]
 set -eu

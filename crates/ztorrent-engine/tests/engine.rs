@@ -58,7 +58,7 @@ fn shutdown(h: EngineHandle) {
 }
 
 fn sample() -> Vec<u8> {
-    std::fs::read(concat!(env!("CARGO_MANIFEST_DIR"), "/../../../sample-torrents/sintel.torrent")).unwrap()
+    std::fs::read(concat!(env!("CARGO_MANIFEST_DIR"), "/../../sample-torrents/sintel.torrent")).unwrap()
 }
 
 #[test]

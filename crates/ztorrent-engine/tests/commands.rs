@@ -93,7 +93,7 @@ fn shutdown(h: EngineHandle) {
 }
 
 fn sintel() -> Vec<u8> {
-    std::fs::read(concat!(env!("CARGO_MANIFEST_DIR"), "/../../../sample-torrents/sintel.torrent")).unwrap()
+    std::fs::read(concat!(env!("CARGO_MANIFEST_DIR"), "/../../sample-torrents/sintel.torrent")).unwrap()
 }
 
 fn state_file(dir: &Path) -> serde_json::Value {
@@ -138,7 +138,7 @@ fn inspect_and_add_every_kind_of_source() {
     let dir = tempfile::tempdir().unwrap();
     let h = engine(dir.path(), |_| {});
     let mut w = Watch::new(&h);
-    let sample = PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/../../../sample-torrents/sintel.torrent"));
+    let sample = PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/../../sample-torrents/sintel.torrent"));
     let port = serve(sintel());
 
     for source in [

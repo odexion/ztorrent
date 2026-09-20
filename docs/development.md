@@ -1,175 +1,137 @@
 # Development
 
-Developer notes for ztorrent. For installing and using the app, see the [README](../README.md).
+Developer notes for ztorrent. For installing and using the app, see the
+[README](../README.md).
 
-## Running from source
+ztorrent is a Rust workspace at the root of this repository: `cargo build` and
+`cargo test` work from here with no subdirectory to step into. It was an
+Electron app up to v0.4.1; that code is gone from the tree, and the v0.4.1 tag
+is the last checkout that has it. How the rebuild was done is written up in
+[rust-gpui-migration.md](rust-gpui-migration.md).
 
-```bash
-npm install
-npm start          # or: npm run dev   (opens devtools)
-```
+## Building
 
-Then **File ▸ Add Torrent…** (⌘O on macOS, Ctrl+O elsewhere) and pick something from
-`sample-torrents/`.
-
-### Building
-
-```bash
-./scripts/make-icns.sh    # build/icon.icns from build/icon.png (macOS only)
-npm run pack              # unpacked app in dist/
-npm run dist              # macOS .dmg, arm64 + x64
-npm run dist:win          # Windows NSIS installer, x64 + arm64
-npm run dist:linux        # Linux AppImage + .deb, x64 + arm64
-npm run dist:all          # all three
-```
-
-Windows and Linux icons are generated from `build/icon.png`, so `make-icns.sh` (which
-needs `sips` and `iconutil`) is only required for the macOS build.
-
-### Releases
-
-CI builds all three platforms on every push to `main` and attaches the installers to the
-run as artifacts. Pushing a `v*` tag additionally publishes them as a GitHub Release:
+The app is standalone: libtorrent 2.1.1 and OpenSSL 3 are compiled from source
+and linked in, so nothing needs installing where it runs. Building needs a C++
+compiler, Perl and `make` (OpenSSL's build), `curl` and `tar`, and Boost's headers.
 
 ```bash
-npm version patch     # or minor / major — writes package.json and tags
-git push --follow-tags
+brew install boost                     # macOS; Debian/Ubuntu: apt install libboost-dev
+cargo run -p ztorrent                  # the app
+cargo test                             # the workspace
 ```
 
-That produces `.dmg` (arm64 + x64), `.exe` NSIS installers (x64 + arm64), and
-`.AppImage` + `.deb` (x64 + arm64). Everything is unsigned.
+- The first build downloads libtorrent's release tarball and checks its SHA-256
+  (`crates/ztorrent-lt-sys/build.rs`); `LIBTORRENT_SRC` points at an unpacked copy
+  for offline builds. libtorrent is always built optimised, even in a debug build.
+- Boost's headers are looked for under `/opt/homebrew/include`, `/usr/local/include`
+  and `/usr/include`; set `BOOST_INCLUDE` if they are elsewhere.
+- On Linux, GPUI also needs its window-system headers: see the package list in
+  `.github/actions/native-setup/action.yml`.
+- On Windows: Visual Studio's C++ tools, Strawberry Perl, and Boost's headers
+  with `BOOST_INCLUDE` pointing at them.
+- `.cargo/config.toml` builds for macOS 11 and later.
 
-The build sets `npmRebuild: false`. Every native dependency in the tree —
-`bufferutil`, `utf-8-validate`, `utp-native`, `node-datachannel`,
-`fs-native-extensions` — ships prebuilt binaries for each platform that import only
-`napi_*` symbols. N-API is ABI-stable across Node and Electron, so those binaries
-load in Electron unchanged and `@electron/rebuild` has nothing to do. Leaving it on
-just makes node-gyp download Electron headers, which is the one step that needs the
-network and the one step that fails behind a slow or filtered connection.
-
-Builds are unsigned — there is no Developer ID here, so electron-builder skips code
-signing. A locally built `.app` runs fine; one that has been downloaded will need
-`/usr/bin/xattr -dr com.apple.quarantine /Applications/ztorrent.app` or a right-click ▸ Open.
-Windows SmartScreen will likewise warn about the unsigned installer.
-
-### Updating in place
-
-These builds are unsigned, so Squirrel and the platform update services are out — both
-want a signature before they will replace an application. `electron/updater.js` does by
-hand what `scripts/install.sh` does: read the latest release off the GitHub API, pick the
-artifact whose name matches this platform and architecture, and put it where the running
-copy lives. The two must agree on that naming, so a change to one is a change to both.
-
-The swap cannot happen while the app holds its own files open, so it is written out as a
-small `/bin/sh` script and started detached. It waits for our pid to exit, moves the old
-copy aside, puts the new one in place, and launches it. Moving rather than deleting is
-the point: if the copy fails, the old version goes back, and the worst case is the
-version you already had starting up again.
-
-On macOS the `.app` is lifted out of the `.dmg` while the app is still running — a
-failure there can still be reported in the UI, where one after quitting cannot. Linux
-swaps the AppImage (and only when running from one; a `.deb` install needs the package
-manager). Windows hands the downloaded NSIS installer the job, since it already knows
-how to stop, replace and restart the app.
-
-Two environment variables make it testable without publishing anything:
+## Packaging
 
 ```bash
-ZTORRENT_UPDATE_FEED=http://127.0.0.1:8000/feed.json   # a release JSON to read instead
-ZTORRENT_UPDATE_PRETEND_VERSION=0.0.1                  # pretend to be older than we are
+cargo install cargo-packager --locked --version 0.11.8
+cargo build --release -p ztorrent --target aarch64-apple-darwin
+cargo packager --release -p ztorrent --target aarch64-apple-darwin --formats dmg
+sh scripts/check-standalone.sh aarch64-apple-darwin   # fails on any non-system library
+sh scripts/rename-artifacts.sh target/packages 0.5.3
 ```
 
-`applyAndRestart()` refuses to run unpackaged — `app.getPath('exe')` points at
-`Electron.app` in a dev run, and the swap would happily replace it.
+The formats per platform are `dmg` (macOS), `nsis` (Windows) and `appimage,deb`
+(Linux). The Mac app is signed ad hoc, as the Electron releases were not signed
+either. The Windows installer removes an Electron install of ztorrent first,
+never its data.
 
-## Sample torrents
+The app icon comes from `build/icon.png` and `build/icon.icns`, which
+`scripts/make-icon.mjs` and `scripts/make-icns.sh` generate. Both are plain
+Node and shell — there is no npm install here.
 
-`sample-torrents/` ships four well-seeded, freely distributable torrents so the app can be
-exercised immediately:
+## Releasing
 
-| File | Size | Notes |
-|---|---|---|
-| `debian-13.6.0-amd64-netinst.iso.torrent` | 755 MB | Huge swarm (100+ seeds), HTTP tracker + two web seeds. Best for watching real throughput. |
-| `sintel.torrent` | 123 MB | Blender open movie, 11 files. Good for exercising the Files tab and per-file priorities. |
-| `big-buck-bunny.torrent` | 264 MB | Blender open movie. |
-| `tears-of-steel.torrent` | 571 MB | Blender open movie. |
+`.github/workflows/native.yml` tests every push on macOS, Linux and Windows. Run
+it by hand to build all eight installers as artifacts (macOS arm64 and x64,
+Windows x64 and arm64, and an AppImage and `.deb` each for Linux x86_64 and
+arm64). Push a tag to publish them:
 
-## Privacy
+```bash
+git tag v0.5.3 && git push origin v0.5.3
+```
 
-Preferences ▸ Connection has three controls worth understanding. All of them are
-deliberately fail-closed: anything that cannot be routed under a policy is
-switched off rather than sent around it, because a proxy that covers announces
-but leaks peer connections costs speed and hides nothing — the address the swarm
-records is the one the peers see.
+The installers keep the names electron-builder used, so an Electron install's
+updater and `scripts/install.sh` move it across. A tag with a suffix
+(`v0.6.0-beta.1`) publishes a prerelease, which both of them skip.
 
-**Protocol encryption** hides the peer handshake from traffic inspection.
-*Enabled* negotiates it and falls back to plaintext; *Required* refuses peers that
-will not encrypt, which is stricter but shrinks the usable swarm. It does nothing
-about tracker or DHT traffic.
+On Windows, the Electron updater runs the installer without `/R`, so after
+that one update ztorrent has to be started by hand; later updates restart it.
 
-**Proxy** routes tracker announces, web-seed fetches and outgoing peer connections
-through a SOCKS5 server, resolving hostnames at the proxy so no DNS leaks locally.
-Turning it on also disables DHT, local peer discovery, µTP, UPnP/NAT-PMP port
-mapping and `udp://` trackers, and closes the inbound listeners — with a proxy,
-connections are outgoing only. The password is kept in the system keychain via
-Electron's `safeStorage`, not in the settings file; where that is unavailable it
-falls back to plaintext rather than losing it.
+### Signing
 
-**Network interface** pins every outgoing connection to one interface's address —
-a VPN's, typically. If that interface goes away the connections fail instead of
-falling back to your normal one, and resume by themselves when it returns, which
-is the kill switch. The address is re-read per connection, so a VPN that
-reconnects on a different address is picked up without a restart. Local
-discovery, µTP, port mapping and `udp://` trackers stop while this is set; DHT
-keeps working, with its socket bound to the same interface.
+The Windows app and installer are signed through
+[SignPath Foundation](https://signpath.org), which is free for open-source
+projects, so that SmartScreen does not call them unknown. For a release tag,
+the package job uploads `ztorrent.exe`, waits for SignPath to sign it,
+packages it, then does the same for the installer. Until the settings below
+exist, Windows builds are published unsigned, as before.
 
-Either policy needs a restart to take effect, and the log pane says so if you
-change one and forget.
+Once the project is accepted on signpath.io:
 
-`npm test` covers both. `test:egress` exercises the routing against a local
-SOCKS5 server and a real interface — asserting, among other things, that a bound
-connection reaches the far end from the bound address, and that a dead proxy or a
-vanished interface fails the connection rather than falling back to a direct one.
-`test:secrets` covers the sealed password, including that a denied keychain does
-not destroy it.
+1. Add GitHub.com as a trusted build system, link it to the project, and
+   install the SignPath GitHub App on this repository.
+2. Paste `signing/artifact-configuration.xml` into the project's default
+   artifact configuration.
+3. In the repository's Actions settings, add the secret
+   `SIGNPATH_API_TOKEN` (a submitter's API token) and the variables
+   `SIGNPATH_ORGANIZATION_ID`, `SIGNPATH_PROJECT_SLUG` and
+   `SIGNPATH_POLICY_SLUG` (`release-signing` for the foundation's certificate).
+
+A release-signing request waits for an approver to accept it on signpath.io,
+twice per Windows architecture; each wait times out after an hour. The policy
+the foundation requires is at the end of the top-level README, and the
+release notes link to it.
+
+## Running
+
+```bash
+cargo run -p ztorrent                                    # your library (see below)
+ZTORRENT_DATA_DIR=/tmp/zt cargo run -p ztorrent          # a scratch library
+cargo run -p ztorrent -- path/to.torrent                 # opens the Add sheet
+cargo run -p ztorrent -- --action=ztorrent::Preferences  # dispatches a named action
+ZTORRENT_DEBUG_UI=1 cargo run -p ztorrent                # traces the window's flow
+```
+
+`--action=` takes the names in `crates/ztorrent-ui/src/actions.rs`, and
+`--action-delay=N` waits N seconds first, so the first rows can arrive. That is
+the scripting surface for driving the window without a mouse.
+
+### An Electron library is still safe
+
+A **release** build uses Electron's own data directory, so upgrading from
+v0.4.1 or earlier carries every torrent, label and preference across. A
+**development** build never does: it keeps `ztorrent-native-dev` beside it and,
+the first time, imports a *copy* of the Electron library with **every torrent
+stopped** — their data belongs to the Electron app, and nothing writes into it
+until you start a torrent yourself. `ZTORRENT_DATA_DIR` overrides both.
+
+The proxy password is sealed the way Electron's `safeStorage` sealed it (the
+`ztorrent Safe Storage` Keychain item on macOS), so either build opens what the
+other wrote.
 
 ## Layout
 
-```
-electron/
-  main.js       window, native menus, all IPC handlers, dock + notifications
-  preload.cjs   the contextBridge surface — the only thing the renderer can see
-  engine.js     WebTorrent wrapper: lifecycle, queue, priorities, snapshots
-  store.js      atomic JSON persistence for settings and the resume session
-  updater.js    release check, artifact download, and the swap-on-restart script
-renderer/
-  index.html    static shell
-  styles.css    the µTorrent theme, as CSS custom properties
-  app.js        toolbar, sidebar, transfer grid, detail tabs, input handling
-  dialogs.js    Add / Add-URL / Create / Preferences / Properties modals
-  icons.js      the inline SVG icon set
-  util.js       byte, speed, ETA and date formatting
-scripts/
-  install.sh    the curl one-liner — resolves a release, draws its own progress bar
-  make-icon.mjs generates build/icon.png and build/logo.svg, no image tooling
-  make-icns.sh  turns the PNG into build/icon.icns via sips + iconutil
-```
+| Crate | What it is |
+|---|---|
+| `ztorrent-core` | Settings, the state file, formatting, columns, the egress policy, and the command set — the only thing the window can ask of the engine |
+| `ztorrent-secrets` | The proxy password seal, compatible with Electron's |
+| `ztorrent-lt-sys` | The cxx bridge to libtorrent-rasterbar; all the unsafe code |
+| `ztorrent-engine` | The engine thread: session, queue, `.part` files, fail-closed egress, resume data |
+| `ztorrent-updater` | Release check, download, staging and the swap script |
+| `ztorrent-ui` | The window on GPUI; depends on `ztorrent-core`, never on the engine |
+| `ztorrent` | The binary that wires them together |
 
-The renderer runs sandboxed with context isolation and no Node access; it talks to the
-engine only over the named channels in `preload.cjs`. The main process polls the engine
-once a second and pushes one combined snapshot, so the UI never blocks on IPC.
-
-### Development flags
-
-```bash
-npx electron . --dev                     # detached devtools
-npx electron . --add=path/to.torrent     # add a torrent at launch
-npx electron . --shot=out.png \
-               --shot-delay=20 \
-               --shot-tabs --shot-quit   # capture the window (and each tab) headlessly
-ZTORRENT_SHOT_EVAL="ztorrentUI.setTab('peers')" npx electron . --shot=out.png
-```
-
-`window.ztorrentUI` exposes `doAction`, `setTab`, `select`, `openAdd` and `state()` — the
-same actions the toolbar triggers, useful for driving the app in tests.
-
+CI enforces the one rule that matters here: `ztorrent-ui` must not be able to
+name the engine. Its only way in is the command set in `ztorrent-core`.

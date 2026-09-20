@@ -47,7 +47,7 @@ pub struct RunOptions {
 /// Where the four sample torrents are: beside the executable in a packaged
 /// build, in the repository in a development one.
 pub fn samples_dir() -> PathBuf {
-    let dev = PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/../../../sample-torrents"));
+    let dev = PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/../../sample-torrents"));
     if cfg!(debug_assertions) && dev.exists() {
         return dev;
     }

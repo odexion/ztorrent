@@ -1,14 +1,14 @@
 name: native
 
-# The Rust + GPUI build of ztorrent, which releases from v0.5.0 on (build.yml
-# still builds the Electron app for main and for PRs, but no longer releases).
+# The Rust + GPUI build of ztorrent, which has released from v0.5.0 on.
 #
 # Every push tests on macOS, Linux and Windows. Installers for all six
 # platform and architecture pairs are built when the workflow is run by hand,
-# and for a v* tag, which also publishes them. The artifact names are the ones
-# electron-builder used, so the Electron app's updater and scripts/install.sh
-# move existing installs across. A tag with a suffix (v0.6.0-beta.1) publishes a
-# prerelease, which `releases/latest` -- and so both of those -- skips.
+# and for a v* tag, which also publishes them. The artifact names are still the
+# ones electron-builder used, so an Electron install's updater and
+# scripts/install.sh move it across. A tag with a suffix (v0.6.0-beta.1)
+# publishes a prerelease, which `releases/latest` -- and so both of those --
+# skips.
 #
 # Each installer is standalone: libtorrent and OpenSSL are compiled from source
 # and linked in (crates/ztorrent-lt-sys/build.rs), and a check fails the job if
@@ -18,9 +18,9 @@ on:
   push:
     branches: [main, rust-gpui]
     tags: ['v*']
-    paths: ['native/**', 'sample-torrents/**', 'build/icon.*', '.github/workflows/native.yml', '.github/actions/native-setup/**']
+    paths: ['crates/**', 'assets/**', 'Cargo.toml', 'Cargo.lock', 'sample-torrents/**', 'build/icon.*', '.github/workflows/native.yml', '.github/actions/native-setup/**']
   pull_request:
-    paths: ['native/**', '.github/workflows/native.yml', '.github/actions/native-setup/**']
+    paths: ['crates/**', 'assets/**', 'Cargo.toml', 'Cargo.lock', '.github/workflows/native.yml', '.github/actions/native-setup/**']
   workflow_dispatch:
 
 permissions:
@@ -29,7 +29,7 @@ permissions:
 env:
   CARGO_TERM_COLOR: always
   BOOST_VERSION: '1.92.0'
-  # The packager's minimum-system-version; native/.cargo/config.toml sets it
+  # The packager's minimum-system-version; .cargo/config.toml sets it
   # for local builds.
   MACOSX_DEPLOYMENT_TARGET: '11.0'
 
@@ -49,7 +49,6 @@ jobs:
     defaults:
       run:
         shell: bash
-        working-directory: native
 
     steps:
       - uses: actions/checkout@v7
@@ -91,10 +90,9 @@ jobs:
     defaults:
       run:
         shell: bash
-        working-directory: native
 
     # Windows builds of a release tag are signed through SignPath once the
-    # organization id is set as a repository variable (native/README.md,
+    # organization id is set as a repository variable (docs/development.md,
     # "Signing"); until then, and for every other build, they ship unsigned.
     # Not plain SIGN: linuxdeploy's AppImage plugin GPG-signs whenever SIGN is
     # set at all, "false" included, and fails for want of a key.
@@ -114,14 +112,14 @@ jobs:
 
       # The app is signed before it goes into the installer, and the installer
       # after, so both carry the signature. Each is one .exe in its own upload,
-      # which native/signing/artifact-configuration.xml matches.
+      # which signing/artifact-configuration.xml matches.
       - name: Upload the app for signing
         id: unsigned-app
         if: env.SIGNPATH_SIGN == 'true'
         uses: actions/upload-artifact@v7
         with:
           name: unsigned-app-${{ matrix.name }}
-          path: native/target/${{ matrix.target }}/release/ztorrent.exe
+          path: target/${{ matrix.target }}/release/ztorrent.exe
           if-no-files-found: error
           retention-days: 1
 
@@ -136,7 +134,7 @@ jobs:
           github-artifact-id: ${{ steps.unsigned-app.outputs.artifact-id }}
           # A release policy waits for an approver, who may take a while.
           wait-for-completion-timeout-in-seconds: 3600
-          output-artifact-directory: native/target/signed-app
+          output-artifact-directory: target/signed-app
 
       - name: Use the signed app
         if: env.SIGNPATH_SIGN == 'true'
@@ -163,7 +161,7 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: unsigned-installer-${{ matrix.name }}
-          path: native/target/packages/ztorrent-*.exe
+          path: target/packages/ztorrent-*.exe
           if-no-files-found: error
           retention-days: 1
 
@@ -177,7 +175,7 @@ jobs:
           signing-policy-slug: ${{ vars.SIGNPATH_POLICY_SLUG }}
           github-artifact-id: ${{ steps.unsigned-installer.outputs.artifact-id }}
           wait-for-completion-timeout-in-seconds: 3600
-          output-artifact-directory: native/target/signed-installer
+          output-artifact-directory: target/signed-installer
 
       - name: Use the signed installer
         if: env.SIGNPATH_SIGN == 'true'
@@ -187,10 +185,10 @@ jobs:
         with:
           name: ztorrent-native-${{ matrix.name }}
           path: |
-            native/target/packages/ztorrent-*.dmg
-            native/target/packages/ztorrent-*.exe
-            native/target/packages/ztorrent-*.AppImage
-            native/target/packages/ztorrent-*.deb
+            target/packages/ztorrent-*.dmg
+            target/packages/ztorrent-*.exe
+            target/packages/ztorrent-*.AppImage
+            target/packages/ztorrent-*.deb
           if-no-files-found: error
           retention-days: 14
 
@@ -231,6 +229,12 @@ jobs:
 
           ```sh
           curl -fsSL https://raw.githubusercontent.com/odexion/ztorrent/main/scripts/install.sh | sh
+          ```
+
+          Windows, in PowerShell:
+
+          ```powershell
+          powershell -ExecutionPolicy Bypass -c "irm https://raw.githubusercontent.com/odexion/ztorrent/main/scripts/install.ps1 | iex"
           ```
 
           Or take an installer from the assets below — the `.dmg` for macOS

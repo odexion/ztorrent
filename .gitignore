@@ -1,4 +1,3 @@
-node_modules/
-dist/
+target/
 build/ztorrent.iconset/
 .DS_Store

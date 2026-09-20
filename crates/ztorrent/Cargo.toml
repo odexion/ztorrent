@@ -33,7 +33,7 @@ openssl-probe = "0.2"
 # cargo-packager: the installers electron-builder produced, from the same icons,
 # with the same bundle id (so Keychain entries and file associations carry
 # over) and the same document and URL types. Output names are normalised by
-# native/scripts/rename-artifacts.sh.
+# scripts/rename-artifacts.sh.
 #
 # Build first, then package, naming the same target both times:
 #   cargo build --release -p ztorrent --target <triple>
@@ -46,9 +46,9 @@ description = "A BitTorrent client for macOS, Windows and Linux"
 authors = ["zaf4 <zafermolbio@gmail.com>"]
 # The .deb installs each PNG under hicolor/<size>/apps; icon themes have no
 # 1024x1024 directory, so the 256 one is what Linux actually finds.
-icons = ["../../../build/icon.png", "icons/256x256.png", "../../../build/icon.icns", "icons/icon.ico"]
+icons = ["../../build/icon.png", "icons/256x256.png", "../../build/icon.icns", "icons/icon.ico"]
 out-dir = "../../target/packages"
-resources = [{ src = "../../../sample-torrents", target = "sample-torrents" }]
+resources = [{ src = "../../sample-torrents", target = "sample-torrents" }]
 formats = ["dmg", "nsis", "appimage", "deb"]
 deep-link-protocols = [{ schemes = ["magnet"], name = "Magnet URI", role = "viewer" }]
 file-associations = [
