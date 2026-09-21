@@ -29,11 +29,12 @@ on:
 permissions:
   contents: read
 
-# A newer push to main or to a pull request supersedes the run still going. A
-# tag's run is never cut short.
+# A newer push to a pull request supersedes the run still going. Runs on main
+# are left to finish, since a cancelled one saves no cache, and a tag's are
+# never cut short.
 concurrency:
-  group: native-${{ github.ref }}
-  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
+  group: native-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
+  cancel-in-progress: true
 
 env:
   CARGO_TERM_COLOR: always
