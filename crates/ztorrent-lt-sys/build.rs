@@ -9,6 +9,10 @@
 //!   headers when they are not under a default prefix.
 //! - ZTORRENT_SKIP_NATIVE=1 compiles no C++ at all, for `cargo check` against
 //!   another platform's target. Nothing built that way can link.
+//! - ZTORRENT_NATIVE_CACHE names a folder where compiled libtorrent and OpenSSL
+//!   are kept between builds, keyed on everything that goes into them. A
+//!   version bump reruns this script, which otherwise downloads and compiles
+//!   both again.
 
 use sha2::{Digest, Sha256};
 use std::path::{Path, PathBuf};
@@ -18,7 +22,7 @@ const LT_VERSION: &str = "2.1.1";
 const LT_SHA256: &str = "0f163516ecef2e3331500266751de3098835a3c3ae0c2290448046c632bc0e93";
 
 fn main() {
-    for var in ["BOOST_INCLUDE", "BOOST_ROOT", "LIBTORRENT_SRC", "ZTORRENT_SKIP_NATIVE", "MACOSX_DEPLOYMENT_TARGET"] {
+    for var in ["BOOST_INCLUDE", "BOOST_ROOT", "LIBTORRENT_SRC", "ZTORRENT_SKIP_NATIVE", "ZTORRENT_NATIVE_CACHE", "MACOSX_DEPLOYMENT_TARGET"] {
         println!("cargo:rerun-if-env-changed={var}");
     }
     println!("cargo:rerun-if-changed=src/bridge.cpp");
@@ -31,18 +35,54 @@ fn main() {
     let os = std::env::var("CARGO_CFG_TARGET_OS").unwrap();
     let msvc = std::env::var("CARGO_CFG_TARGET_ENV").as_deref() == Ok("msvc");
 
-    let lt = libtorrent_source(&out);
     let boost = boost_include();
-    let ssl = openssl_src::Build::new()
-        // Where a static OpenSSL looks for trusted certificates at run time.
-        // Windows needs none: libtorrent loads the system ROOT store itself. On
-        // Linux the app also points SSL_CERT_FILE at the distribution's bundle.
-        .openssl_dir(if os == "linux" { "/usr/lib/ssl" } else { "/etc/ssl" })
-        .build();
+    let cache = native_cache(&boost);
+    let native = match cache.as_deref().filter(|dir| dir.join("ready").is_file()) {
+        Some(dir) => Native::cached(dir),
+        None => {
+            let native = build_native(&out, &boost, &os, msvc);
+            if let Some(dir) = &cache {
+                if let Err(err) = native.store(dir) {
+                    println!("cargo:warning=could not keep libtorrent and OpenSSL in {}: {err}", dir.display());
+                }
+            }
+            native
+        }
+    };
 
-    // Definitions the headers must see identically in libtorrent and in the
-    // bridge, or the two disagree about the layout of the same types.
-    let mut public: Vec<(&str, Option<&str>)> = vec![
+    // The bridge first: with static archives the linker wants each library
+    // before the ones it depends on.
+    let mut bridge = cxx_build::bridge("src/lib.rs");
+    bridge.file("src/bridge.cpp").std("c++17").includes(native.includes(&boost));
+    for (key, value) in public_defines(&os) {
+        bridge.define(key, value);
+    }
+    configure(&mut bridge, msvc);
+    bridge.compile("ztorrent-lt-bridge");
+    native.link();
+
+    match os.as_str() {
+        "macos" => {
+            // ip_notifier and the default-route lookup.
+            println!("cargo:rustc-link-lib=framework=CoreFoundation");
+            println!("cargo:rustc-link-lib=framework=SystemConfiguration");
+        }
+        "windows" => {
+            for name in ["bcrypt", "mswsock", "ws2_32", "iphlpapi", "dbghelp", "crypt32", "user32", "advapi32"] {
+                println!("cargo:rustc-link-lib={name}");
+            }
+        }
+        _ => {
+            println!("cargo:rustc-link-lib=pthread");
+            println!("cargo:rustc-link-lib=dl");
+        }
+    }
+}
+
+/// Definitions the headers must see identically in libtorrent and in the
+/// bridge, or the two disagree about the layout of the same types.
+fn public_defines(os: &str) -> Vec<(&'static str, Option<&'static str>)> {
+    let mut public = vec![
         ("TORRENT_ABI_VERSION", Some("2")),
         ("BOOST_ASIO_ENABLE_CANCELIO", None),
         ("BOOST_ASIO_NO_DEPRECATED", None),
@@ -69,21 +109,39 @@ fn main() {
             ("_CRT_SECURE_NO_DEPRECATE", None),
         ]);
     }
-    let includes = [lt.join("include"), boost.clone(), ssl.include_dir().to_path_buf()];
+    public
+}
 
-    // The bridge first: with static archives the linker wants each library
-    // before the ones it depends on.
-    let mut bridge = cxx_build::bridge("src/lib.rs");
-    bridge.file("src/bridge.cpp").std("c++17").includes(&includes);
-    for (key, value) in &public {
-        bridge.define(key, *value);
-    }
-    configure(&mut bridge, msvc);
-    bridge.compile("ztorrent-lt-bridge");
+/// Compiled libtorrent and OpenSSL: the headers the bridge is built against,
+/// and the static libraries the app links.
+struct Native {
+    lt_include: PathBuf,
+    lt_lib_dir: PathBuf,
+    ssl_include: PathBuf,
+    ssl_lib_dir: PathBuf,
+    ssl_libs: Vec<String>,
+}
+
+/// libtorrent's archive, by the name `cc` gives it.
+fn lt_archive(msvc: bool) -> &'static str {
+    if msvc { "torrent-rasterbar.lib" } else { "libtorrent-rasterbar.a" }
+}
+
+fn build_native(out: &Path, boost: &Path, os: &str, msvc: bool) -> Native {
+    let lt = libtorrent_source(out);
+    let ssl = openssl_src::Build::new()
+        // Where a static OpenSSL looks for trusted certificates at run time.
+        // Windows needs none: libtorrent loads the system ROOT store itself. On
+        // Linux the app also points SSL_CERT_FILE at the distribution's bundle.
+        .openssl_dir(if os == "linux" { "/usr/lib/ssl" } else { "/etc/ssl" })
+        .build();
 
     let cmake = std::fs::read_to_string(lt.join("CMakeLists.txt")).expect("libtorrent CMakeLists.txt");
     let mut lib = cc::Build::new();
-    lib.cpp(true).std("c++17").includes(&includes).include(lt.join("deps/try_signal"));
+    lib.cpp(true)
+        .std("c++17")
+        .includes([lt.join("include"), boost.to_path_buf(), ssl.include_dir().to_path_buf()])
+        .include(lt.join("deps/try_signal"));
     for (list, dir) in [
         ("sources", "src"),
         ("kademlia_sources", "src/kademlia"),
@@ -97,8 +155,8 @@ fn main() {
     // Added outside the lists, when the encryption option is on (the default,
     // and what peers expect).
     lib.file(lt.join("src/pe_crypto.cpp"));
-    for (key, value) in &public {
-        lib.define(key, *value);
+    for (key, value) in public_defines(os) {
+        lib.define(key, value);
     }
     lib.define("TORRENT_BUILDING_LIBRARY", None)
         .define("BOOST_EXCEPTION_DISABLE", None)
@@ -111,25 +169,108 @@ fn main() {
     // and nobody steps through libtorrent: always optimise it.
     lib.opt_level(2).debug(false).warnings(false);
     configure(&mut lib, msvc);
-    lib.compile("torrent-rasterbar");
+    // Linked by `Native::link`, after the bridge that depends on it.
+    lib.cargo_metadata(false).compile("torrent-rasterbar");
 
-    ssl.print_cargo_metadata();
-    match os.as_str() {
-        "macos" => {
-            // ip_notifier and the default-route lookup.
-            println!("cargo:rustc-link-lib=framework=CoreFoundation");
-            println!("cargo:rustc-link-lib=framework=SystemConfiguration");
-        }
-        "windows" => {
-            for name in ["bcrypt", "mswsock", "ws2_32", "iphlpapi", "dbghelp", "crypt32", "user32", "advapi32"] {
-                println!("cargo:rustc-link-lib={name}");
-            }
-        }
-        _ => {
-            println!("cargo:rustc-link-lib=pthread");
-            println!("cargo:rustc-link-lib=dl");
+    Native {
+        lt_include: lt.join("include"),
+        lt_lib_dir: out.to_path_buf(),
+        ssl_include: ssl.include_dir().to_path_buf(),
+        ssl_lib_dir: ssl.lib_dir().to_path_buf(),
+        ssl_libs: ssl.libs().to_vec(),
+    }
+}
+
+impl Native {
+    fn cached(dir: &Path) -> Native {
+        let libs = std::fs::read_to_string(dir.join("openssl-libs")).expect("openssl-libs in the native cache");
+        Native {
+            lt_include: dir.join("libtorrent/include"),
+            lt_lib_dir: dir.join("libtorrent/lib"),
+            ssl_include: dir.join("openssl/include"),
+            ssl_lib_dir: dir.join("openssl/lib"),
+            ssl_libs: libs.lines().map(str::to_string).collect(),
         }
     }
+
+    /// Copies into a folder beside `dir` and renames it into place, so a build
+    /// that dies halfway, or another one racing this, never leaves a half
+    /// entry that looks complete.
+    fn store(&self, dir: &Path) -> std::io::Result<()> {
+        let msvc = std::env::var("CARGO_CFG_TARGET_ENV").as_deref() == Ok("msvc");
+        let tmp = dir.with_extension(format!("tmp{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&tmp);
+        copy_dir(&self.lt_include, &tmp.join("libtorrent/include"))?;
+        std::fs::create_dir_all(tmp.join("libtorrent/lib"))?;
+        std::fs::copy(self.lt_lib_dir.join(lt_archive(msvc)), tmp.join("libtorrent/lib").join(lt_archive(msvc)))?;
+        copy_dir(&self.ssl_include, &tmp.join("openssl/include"))?;
+        copy_dir(&self.ssl_lib_dir, &tmp.join("openssl/lib"))?;
+        std::fs::write(tmp.join("openssl-libs"), self.ssl_libs.join("\n"))?;
+        std::fs::write(tmp.join("ready"), "")?;
+        if std::fs::rename(&tmp, dir).is_err() {
+            // Another build got there first with the same inputs.
+            std::fs::remove_dir_all(&tmp)?;
+        }
+        Ok(())
+    }
+
+    fn includes(&self, boost: &Path) -> [PathBuf; 3] {
+        [self.lt_include.clone(), boost.to_path_buf(), self.ssl_include.clone()]
+    }
+
+    fn link(&self) {
+        println!("cargo:rustc-link-search=native={}", self.lt_lib_dir.display());
+        println!("cargo:rustc-link-lib=static=torrent-rasterbar");
+        println!("cargo:rustc-link-search=native={}", self.ssl_lib_dir.display());
+        for lib in &self.ssl_libs {
+            println!("cargo:rustc-link-lib=static={lib}");
+        }
+        println!("cargo:include={}", self.ssl_include.display());
+        println!("cargo:lib={}", self.ssl_lib_dir.display());
+    }
+}
+
+/// The cache entry for this build, or None when ZTORRENT_NATIVE_CACHE is not
+/// set. The key covers what decides the compiled output: this script, the
+/// pinned libtorrent and OpenSSL, Boost, the target, the profile, the
+/// compiler and the flags it is handed.
+fn native_cache(boost: &Path) -> Option<PathBuf> {
+    let root = PathBuf::from(std::env::var_os("ZTORRENT_NATIVE_CACHE")?);
+    let mut key = Sha256::new();
+    key.update(include_bytes!("build.rs"));
+    for part in [LT_VERSION, LT_SHA256, openssl_src::version()] {
+        key.update(part);
+        key.update([0]);
+    }
+    for var in ["TARGET", "PROFILE", "OPT_LEVEL", "DEBUG", "CARGO_CFG_TARGET_FEATURE", "MACOSX_DEPLOYMENT_TARGET", "LIBTORRENT_SRC", "CC", "CXX", "CFLAGS", "CXXFLAGS", "AR"] {
+        key.update(std::env::var(var).unwrap_or_default());
+        key.update([0]);
+    }
+    key.update(std::fs::read(boost.join("boost/version.hpp")).unwrap_or_default());
+    let compiler = cc::Build::new().cpp(true).get_compiler();
+    key.update(compiler.path().as_os_str().as_encoded_bytes());
+    if !compiler.is_like_msvc() {
+        // MSVC's path names its version; clang and gcc have to be asked.
+        if let Ok(version) = Command::new(compiler.path()).arg("--version").output() {
+            key.update(&version.stdout);
+        }
+    }
+    let hex: String = key.finalize().iter().take(8).map(|b| format!("{b:02x}")).collect();
+    Some(root.join(format!("{}-{hex}", std::env::var("TARGET").unwrap())))
+}
+
+fn copy_dir(from: &Path, to: &Path) -> std::io::Result<()> {
+    std::fs::create_dir_all(to)?;
+    for entry in std::fs::read_dir(from)? {
+        let entry = entry?;
+        let dest = to.join(entry.file_name());
+        if entry.file_type()?.is_dir() {
+            copy_dir(&entry.path(), &dest)?;
+        } else {
+            std::fs::copy(entry.path(), dest)?;
+        }
+    }
+    Ok(())
 }
 
 fn configure(build: &mut cc::Build, msvc: bool) {

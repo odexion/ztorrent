@@ -4,7 +4,10 @@ name: native
 #
 # Every push tests on macOS, Linux and Windows. Installers for all six
 # platform and architecture pairs are built when the workflow is run by hand,
-# and for a v* tag, which also publishes them. The artifact names are still the
+# and for a v* tag, which also publishes them once the tests have passed too.
+# A push to main runs the same release builds without packaging them, only to
+# leave warm caches: a tag can read main's caches but not another tag's, so
+# this is what lets a release start from nearly everything already built. The artifact names are still the
 # ones electron-builder used, so an Electron install's updater and
 # scripts/install.sh move it across. A tag with a suffix (v0.6.0-beta.1)
 # publishes a prerelease, which `releases/latest` -- and so both of those --
@@ -25,6 +28,12 @@ on:
 
 permissions:
   contents: read
+
+# A newer push to main or to a pull request supersedes the run still going. A
+# tag's run is never cut short.
+concurrency:
+  group: native-${{ github.ref }}
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
 
 env:
   CARGO_TERM_COLOR: always
@@ -54,11 +63,19 @@ jobs:
       - uses: actions/checkout@v7
 
       - uses: ./.github/actions/native-setup
+        id: setup
         with:
           cache-key: test-${{ matrix.name }}
 
       - name: Test
         run: cargo test --locked -p ztorrent-core -p ztorrent-secrets -p ztorrent-lt-sys -p ztorrent-engine -p ztorrent-updater -p ztorrent-ui
+
+      - name: Keep libtorrent and OpenSSL for the next run
+        if: github.ref == 'refs/heads/main' && steps.setup.outputs.native-cache-hit != 'true'
+        uses: actions/cache/save@v5
+        with:
+          path: ${{ runner.temp }}/native-cache
+          key: ${{ steps.setup.outputs.native-cache-key }}
 
       # The window crate must not reach the engine: its only way in is the
       # command set in ztorrent-core.
@@ -68,10 +85,11 @@ jobs:
             echo 'ztorrent-ui depends on the engine'; exit 1
           fi
 
+  # Not held back for the tests: they run alongside, and a release publishes
+  # only once both have passed.
   package:
     name: package (${{ matrix.name }})
-    needs: test
-    if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v')
+    if: github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -96,19 +114,29 @@ jobs:
     # "Signing"); until then, and for every other build, they ship unsigned.
     # Not plain SIGN: linuxdeploy's AppImage plugin GPG-signs whenever SIGN is
     # set at all, "false" included, and fails for want of a key.
+    # SHIP is false on main, where the job only builds, to warm the caches.
     env:
+      SHIP: ${{ github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v') }}
       SIGNPATH_SIGN: ${{ startsWith(matrix.name, 'win-') && startsWith(github.ref, 'refs/tags/v') && vars.SIGNPATH_ORGANIZATION_ID != '' }}
 
     steps:
       - uses: actions/checkout@v7
 
       - uses: ./.github/actions/native-setup
+        id: setup
         with:
           target: ${{ matrix.target }}
           cache-key: package-${{ matrix.name }}
 
       - name: Build
         run: cargo build --release --locked -p ztorrent --target ${{ matrix.target }}
+
+      - name: Keep libtorrent and OpenSSL for the next run
+        if: github.ref == 'refs/heads/main' && steps.setup.outputs.native-cache-hit != 'true'
+        uses: actions/cache/save@v5
+        with:
+          path: ${{ runner.temp }}/native-cache
+          key: ${{ steps.setup.outputs.native-cache-key }}
 
       # The app is signed before it goes into the installer, and the installer
       # after, so both carry the signature. Each is one .exe in its own upload,
@@ -140,19 +168,26 @@ jobs:
         if: env.SIGNPATH_SIGN == 'true'
         run: cp target/signed-app/ztorrent.exe target/${{ matrix.target }}/release/ztorrent.exe
 
+      # A prebuilt binary where there is one, rather than compiling it each run.
       - name: Install cargo-packager
-        run: cargo install cargo-packager --locked --version 0.11.8
+        if: env.SHIP == 'true'
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-packager@0.11.8
 
       - name: Package
+        if: env.SHIP == 'true'
         env:
           # linuxdeploy is itself an AppImage, and runners have no FUSE to mount it.
           APPIMAGE_EXTRACT_AND_RUN: '1'
         run: cargo packager --release -p ztorrent --target ${{ matrix.target }} --formats ${{ matrix.formats }}
 
       - name: Check the app carries its own libraries
+        if: env.SHIP == 'true'
         run: sh scripts/check-standalone.sh ${{ matrix.target }}
 
       - name: Name the installers
+        if: env.SHIP == 'true'
         run: sh scripts/rename-artifacts.sh target/packages "$(sed -n 's/^version = "\(.*\)"$/\1/p' Cargo.toml | head -1)"
 
       - name: Upload the installer for signing
@@ -182,6 +217,7 @@ jobs:
         run: cp target/signed-installer/ztorrent-*.exe target/packages/
 
       - uses: actions/upload-artifact@v7
+        if: env.SHIP == 'true'
         with:
           name: ztorrent-native-${{ matrix.name }}
           path: |
@@ -194,7 +230,7 @@ jobs:
 
   release:
     name: release
-    needs: package
+    needs: [test, package]
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     permissions:

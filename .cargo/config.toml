@@ -3,3 +3,6 @@
 # minimum-system-version. The C++ in libtorrent and OpenSSL is compiled for it
 # too, so a build made on a newer Mac still starts on an older one.
 MACOSX_DEPLOYMENT_TARGET = "11.0"
+# Compiled libtorrent and OpenSSL, kept between builds so a version bump does
+# not recompile them (crates/ztorrent-lt-sys/build.rs). CI points it elsewhere.
+ZTORRENT_NATIVE_CACHE = { value = "target/native-cache", relative = true }

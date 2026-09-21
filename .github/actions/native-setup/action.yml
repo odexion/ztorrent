@@ -12,6 +12,14 @@ inputs:
     description: Keeps each job's cargo cache apart
     required: true
 
+outputs:
+  native-cache-key:
+    description: The key to save the native cache under
+    value: ${{ steps.native.outputs.cache-primary-key }}
+  native-cache-hit:
+    description: Whether that exact key was restored, so there is nothing to save
+    value: ${{ steps.native.outputs.cache-hit }}
+
 runs:
   using: composite
   steps:
@@ -75,11 +83,27 @@ runs:
       with:
         targets: ${{ inputs.target }}
 
-    - uses: actions/cache@v5
+    # Caches are saved from main only, and read everywhere. GitHub scopes a
+    # cache to the ref that saved it, so one saved by a release tag could only
+    # ever be read by that tag again: every release built from nothing. A tag
+    # or pull request reads main's instead. rust-cache also drops this
+    # workspace's own crates and incremental state, which keeps each entry
+    # small enough that the jobs' caches together fit GitHub's 10 GB.
+    - uses: Swatinem/rust-cache@v2
       with:
-        path: |
-          ~/.cargo/registry
-          ~/.cargo/git
-          target
-        key: native-${{ inputs.cache-key }}-${{ hashFiles('Cargo.lock') }}
-        restore-keys: native-${{ inputs.cache-key }}-
+        shared-key: ${{ inputs.cache-key }}
+        save-if: ${{ github.ref == 'refs/heads/main' }}
+
+    # Compiled libtorrent and OpenSSL (crates/ztorrent-lt-sys/build.rs). Every
+    # version bump reruns that build script, and without this it downloads and
+    # compiles both again. Saved by the job, after it has built them.
+    - name: Point the build at the native cache
+      shell: bash
+      run: echo "ZTORRENT_NATIVE_CACHE=${{ runner.temp }}/native-cache" >> "$GITHUB_ENV"
+
+    - uses: actions/cache/restore@v5
+      id: native
+      with:
+        path: ${{ runner.temp }}/native-cache
+        key: native-libs-${{ inputs.cache-key }}-${{ hashFiles('crates/ztorrent-lt-sys/build.rs', 'Cargo.lock') }}
+        restore-keys: native-libs-${{ inputs.cache-key }}-
