@@ -5,9 +5,13 @@
   The packager's document type names only the extension, which leaves .torrent
   with a dynamic type and the generic icon. This one declares the type
   (org.bittorrent.torrent, as other clients do) and gives it ztorrent's icon.
+  It also says why ztorrent wants an external drive, which macOS shows in the
+  prompt it puts up the first time a download is saved to one.
 -->
 <plist version="1.0">
 <dict>
+	<key>NSRemovableVolumesUsageDescription</key>
+	<string>ztorrent saves downloads to, and seeds them from, the folder you chose on this drive.</string>
 	<key>CFBundleDocumentTypes</key>
 	<array>
 		<dict>

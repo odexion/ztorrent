@@ -167,9 +167,9 @@ impl Workspace {
                 }
                 crate::menus::set_menus(&settings, cx);
             }
-            Event::Complete { name, .. } => {
+            Event::Complete { id, name, .. } => {
                 if self.state.settings.notify_on_complete {
-                    crate::platform::notify_complete(name);
+                    crate::platform::notify_complete(&id, &name, cx);
                 }
             }
         }

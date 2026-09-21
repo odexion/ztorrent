@@ -56,6 +56,7 @@ fn harness(cx: &mut TestAppContext, boot: Bootstrap) -> Harness {
     let settings = boot.settings.clone();
     let labels = boot.labels.clone();
     cx.update(|cx| {
+        crate::set_app_identity(cx);
         gpui_component::init(cx);
         crate::actions::bind_keys(cx);
         cx.set_global(Bridge(ctx));
@@ -546,4 +547,26 @@ fn log_lines_from_startup_are_shown_once(cx: &mut TestAppContext) {
     h.settle();
     let lines = h.with_state(|s| s.log.iter().map(|l| l.message.clone()).collect::<Vec<_>>());
     assert_eq!(lines, vec!["ztorrent started. Listening for peers.", "Added \"x\".", "ztorrent started. Listening for peers."], "the snapshot line once, a later repeat still shown");
+}
+
+#[gpui::test]
+fn a_finished_download_notifies_through_the_system(cx: &mut TestAppContext) {
+    let mut h = harness(cx, boot());
+    h.events.send(Event::Complete { id: "b".into(), name: "Beta".into(), path: "/downloads/Beta".into() }).unwrap();
+    h.settle();
+    let shown = h.cx.shown_system_notifications();
+    assert_eq!(shown.len(), 1, "one notification for one finished torrent");
+    assert_eq!(shown[0].title, "Download complete");
+    assert_eq!(shown[0].body, "Beta");
+    assert_eq!(shown[0].tag, "complete:b", "tagged by torrent, so a repeat replaces its own");
+}
+
+#[gpui::test]
+fn a_finished_download_stays_quiet_when_the_setting_is_off(cx: &mut TestAppContext) {
+    let mut b = boot();
+    b.settings.notify_on_complete = false;
+    let mut h = harness(cx, b);
+    h.events.send(Event::Complete { id: "b".into(), name: "Beta".into(), path: "/downloads/Beta".into() }).unwrap();
+    h.settle();
+    assert!(h.cx.shown_system_notifications().is_empty(), "nothing posted");
 }

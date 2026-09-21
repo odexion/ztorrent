@@ -1,6 +1,8 @@
 //! The few things the window does outside itself: the Dock badge and the
 //! completion notification.
 
+use gpui::{App, SystemNotification};
+
 /// The Dock badge: the percentage of what is downloading, or nothing.
 #[cfg(target_os = "macos")]
 pub fn set_badge(text: Option<&str>) {
@@ -33,10 +35,21 @@ pub fn set_appearance(dark: bool) {
 #[cfg(not(target_os = "macos"))]
 pub fn set_appearance(_dark: bool) {}
 
-/// "Download complete", with the torrent's name. Shown off the main thread:
-/// the system call can take a moment and the window should not wait on it.
-pub fn notify_complete(name: String) {
-    std::thread::spawn(move || {
-        let _ = notify_rust::Notification::new().summary("Download complete").body(&name).appname("ztorrent").show();
+/// "Download complete", with the torrent's name, through the notification
+/// centre GPUI already talks to -- UNUserNotificationCenter on macOS, the
+/// portal on Linux, a toast on Windows. notify-rust drove NSUserNotification
+/// here, a class current macOS no longer ships at all; worse, reaching for it
+/// made the process claim Finder's bundle identifier, so the system stopped
+/// recognising ztorrent and asked again for every drive it had already been
+/// allowed.
+///
+/// The torrent's id is the tag, so a torrent that finishes twice replaces its
+/// own notification instead of stacking another one.
+pub fn notify_complete(id: &str, name: &str, cx: &App) {
+    cx.show_system_notification(SystemNotification {
+        tag: format!("complete:{id}").into(),
+        title: "Download complete".into(),
+        body: name.into(),
+        actions: Vec::new(),
     });
 }

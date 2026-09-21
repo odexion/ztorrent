@@ -139,6 +139,13 @@ fn bootstrap(commands: &flume::Sender<Command>) -> Bootstrap {
     wait_for(rx).unwrap_or_default()
 }
 
+/// Who the system thinks is talking to it: the AppUserModelID Windows wants
+/// before it will show a toast, and the name Linux puts on one. Set before any
+/// window opens or any notification is posted, as the platforms expect.
+pub fn set_app_identity(cx: &App) {
+    cx.set_app_identity("dev.zaf4.ztorrent", "ztorrent");
+}
+
 fn open_window(boot: Bootstrap, version: String, events: flume::Receiver<Event>, updates: flume::Receiver<ztorrent_core::update::UpdateStatus>, opens: flume::Receiver<String>, cx: &mut App) {
     let size_ = size(px(1180.), px(760.));
     let bounds = match &boot.window {
@@ -194,6 +201,7 @@ pub fn run(options: RunOptions) {
     });
 
     app.run(move |cx: &mut App| {
+        set_app_identity(cx);
         // GPUI panics when no font resolves, and a minimal Linux install can
         // have none. Noto Sans is on its fallback list, so carrying it means
         // there is always one; a system that has fonts keeps using its own.
