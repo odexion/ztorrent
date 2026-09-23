@@ -9,6 +9,7 @@ pub mod columns;
 pub mod command;
 pub mod egress;
 pub mod fmt;
+pub mod launch;
 pub mod model;
 pub mod settings;
 pub mod store;

@@ -333,24 +333,50 @@ impl Workspace {
 
     pub fn reveal_selected(&mut self, cx: &mut Context<Self>) {
         if let Some(id) = self.single() {
-            self.reveal(id, None, false, cx);
+            self.reveal(id, None, cx);
         }
     }
 
-    /// Opens (`open`) or reveals a torrent's content, or one file of it. A path
-    /// that is not there yet reveals the save folder instead.
-    pub fn reveal(&mut self, id: String, file: Option<usize>, open: bool, cx: &mut Context<Self>) {
+    /// Reveals a torrent's content, or one file of it. A path that is not there
+    /// yet reveals the save folder instead.
+    pub fn reveal(&mut self, id: String, file: Option<usize>, cx: &mut Context<Self>) {
         let rx = ask(cx, |reply| Command::ResolvePath { id, file, reply });
         cx.spawn(async move |_, cx| {
             if let Ok(Some(resolved)) = rx.await {
                 let _ = cx.update(|cx| {
-                    if resolved.exists {
-                        if open { cx.open_with_system(&resolved.target) } else { cx.reveal_path(&resolved.target) }
-                    } else if !open {
-                        cx.open_with_system(&resolved.save_path)
-                    }
+                    if resolved.exists { cx.reveal_path(&resolved.target) } else { cx.open_with_system(&resolved.save_path) }
                 });
             }
+        })
+        .detach();
+    }
+
+    /// Opens one file of a torrent with the system. The torrent chose that
+    /// file's name, so one that would run as a program is asked about first.
+    pub fn open_file(&mut self, id: String, index: usize, window: &mut Window, cx: &mut Context<Self>) {
+        let rx = ask(cx, |reply| Command::ResolvePath { id, file: Some(index), reply });
+        cx.spawn_in(window, async move |_, cx| {
+            let Ok(Some(resolved)) = rx.await else { return };
+            if !resolved.exists {
+                return;
+            }
+            if ztorrent_core::launch::runs_code(&resolved.target) {
+                let name = resolved.target.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+                let answer = cx.update(|window, cx| {
+                    window.prompt(
+                        PromptLevel::Warning,
+                        &format!("\"{name}\" is a program. Open it anyway?"),
+                        Some("It came from a torrent and will run with your permissions. Open it only if you trust where it came from."),
+                        &["Open Anyway", "Cancel"],
+                        cx,
+                    )
+                });
+                let Ok(answer) = answer else { return };
+                if answer.await != Ok(0) {
+                    return;
+                }
+            }
+            let _ = cx.update(|_, cx| cx.open_with_system(&resolved.target));
         })
         .detach();
     }
@@ -657,14 +683,14 @@ impl Render for Workspace {
                     send(cx, Command::SetFilePriority { id, index: a.index, priority: a.priority });
                 }
             }))
-            .on_action(cx.listener(|this, a: &OpenFile, _, cx| {
+            .on_action(cx.listener(|this, a: &OpenFile, window, cx| {
                 if let Some(id) = this.state.selection.first().cloned() {
-                    this.reveal(id, Some(a.index), true, cx);
+                    this.open_file(id, a.index, window, cx);
                 }
             }))
             .on_action(cx.listener(|this, a: &RevealFile, _, cx| {
                 if let Some(id) = this.state.selection.first().cloned() {
-                    this.reveal(id, Some(a.index), false, cx);
+                    this.reveal(id, Some(a.index), cx);
                 }
             }))
             .on_action(cx.listener(|_, a: &CopyText, _, cx| cx.write_to_clipboard(ClipboardItem::new_string(a.text.clone()))))

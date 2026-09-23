@@ -273,7 +273,7 @@ impl Workspace {
                 )
                 .on_click(cx.listener(move |this, ev: &ClickEvent, _, cx| {
                     if ev.click_count() == 2 {
-                        this.reveal(id_click.clone(), None, false, cx);
+                        this.reveal(id_click.clone(), None, cx);
                     }
                 }))
                 .on_drag(DraggedTorrents { ids: drag_ids }, move |_, _, _, cx| cx.new(|_| DragChip(chip.clone().into())))

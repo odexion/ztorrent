@@ -96,10 +96,10 @@ impl Workspace {
                     ))
                     .child(cell(px(56.), true).child(fmt::pct(f.progress, 1)))
                     .child(cell(px(110.), false).text_color(color).font_weight(weight).child(label))
-                    .on_click(cx.listener(move |this, ev: &ClickEvent, _, cx| {
+                    .on_click(cx.listener(move |this, ev: &ClickEvent, window, cx| {
                         if ev.click_count() == 2 {
                             if let Some(id) = this.state.selection.first().cloned() {
-                                this.reveal(id, Some(index), true, cx);
+                                this.open_file(id, index, window, cx);
                             }
                         }
                     }))
