@@ -352,31 +352,45 @@ impl Workspace {
     }
 
     /// Opens one file of a torrent with the system. The torrent chose that
-    /// file's name, so one that would run as a program is asked about first.
-    pub fn open_file(&mut self, id: String, index: usize, window: &mut Window, cx: &mut Context<Self>) {
+    /// file's name, so one that would run as a program is never started by a
+    /// double-click: that shows it in Finder instead. Open from the menu asks,
+    /// offering the same.
+    pub fn open_file(&mut self, id: String, index: usize, double_click: bool, window: &mut Window, cx: &mut Context<Self>) {
         let rx = ask(cx, |reply| Command::ResolvePath { id, file: Some(index), reply });
         cx.spawn_in(window, async move |_, cx| {
             let Ok(Some(resolved)) = rx.await else { return };
             if !resolved.exists {
                 return;
             }
-            if ztorrent_core::launch::runs_code(&resolved.target) {
-                let name = resolved.target.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
-                let answer = cx.update(|window, cx| {
-                    window.prompt(
-                        PromptLevel::Warning,
-                        &format!("\"{name}\" is a program. Open it anyway?"),
-                        Some("It came from a torrent and will run with your permissions. Open it only if you trust where it came from."),
-                        &["Open Anyway", "Cancel"],
-                        cx,
-                    )
-                });
-                let Ok(answer) = answer else { return };
-                if answer.await != Ok(0) {
-                    return;
-                }
+            let target = resolved.target;
+            if !ztorrent_core::launch::runs_code(&target) {
+                let _ = cx.update(|_, cx| cx.open_with_system(&target));
+                return;
             }
-            let _ = cx.update(|_, cx| cx.open_with_system(&resolved.target));
+            if double_click {
+                let _ = cx.update(|_, cx| cx.reveal_path(&target));
+                return;
+            }
+            let name = target.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+            let answer = cx.update(|window, cx| {
+                window.prompt(
+                    PromptLevel::Warning,
+                    &format!("\"{name}\" is a program. Open it anyway?"),
+                    Some("It came from a torrent and will run with your permissions. Open it only if you trust where it came from."),
+                    &[reveal_label(), "Open Anyway", "Cancel"],
+                    cx,
+                )
+            });
+            let Ok(answer) = answer else { return };
+            match answer.await {
+                Ok(0) => {
+                    let _ = cx.update(|_, cx| cx.reveal_path(&target));
+                }
+                Ok(1) => {
+                    let _ = cx.update(|_, cx| cx.open_with_system(&target));
+                }
+                _ => {}
+            }
         })
         .detach();
     }
@@ -685,7 +699,7 @@ impl Render for Workspace {
             }))
             .on_action(cx.listener(|this, a: &OpenFile, window, cx| {
                 if let Some(id) = this.state.selection.first().cloned() {
-                    this.open_file(id, a.index, window, cx);
+                    this.open_file(id, a.index, false, window, cx);
                 }
             }))
             .on_action(cx.listener(|this, a: &RevealFile, _, cx| {
@@ -740,6 +754,17 @@ impl Render for Workspace {
             })
             .drag_over::<ExternalPaths>(move |s, _, _, _| s.border_2().border_color(accent))
             .child(div().hidden().child(bridge::marker()))
+    }
+}
+
+/// The platform's name for showing a file in its folder.
+pub fn reveal_label() -> &'static str {
+    if cfg!(target_os = "macos") {
+        "Show in Finder"
+    } else if cfg!(windows) {
+        "Show in Explorer"
+    } else {
+        "Show in File Manager"
     }
 }
 

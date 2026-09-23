@@ -99,18 +99,12 @@ impl Workspace {
                     .on_click(cx.listener(move |this, ev: &ClickEvent, window, cx| {
                         if ev.click_count() == 2 {
                             if let Some(id) = this.state.selection.first().cloned() {
-                                this.open_file(id, index, window, cx);
+                                this.open_file(id, index, true, window, cx);
                             }
                         }
                     }))
                     .on_mouse_down(MouseButton::Right, move |ev, window, cx| {
-                        let reveal = if cfg!(target_os = "macos") {
-                            "Show in Finder"
-                        } else if cfg!(windows) {
-                            "Show in Explorer"
-                        } else {
-                            "Show in File Manager"
-                        };
+                        let reveal = crate::workspace::reveal_label();
                         NativeMenu::new()
                             .menu("Open", Box::new(OpenFile { index }))
                             .menu(reveal, Box::new(RevealFile { index }))
