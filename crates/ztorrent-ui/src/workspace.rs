@@ -366,7 +366,7 @@ impl Workspace {
         let names: Vec<String> = ids.iter().filter_map(|id| self.state.row(id).map(|r| r.name.clone())).collect();
         let what = if ids.len() == 1 { format!("\"{}\"", names.first().cloned().unwrap_or_default()) } else { format!("{} torrents", ids.len()) };
         let (message, detail, button) = if delete_data {
-            (format!("Remove {what} and delete the downloaded data?"), "The files will be moved to the trash of no return — this cannot be undone.", "Delete Data")
+            (format!("Remove {what} and delete the downloaded data?"), "The files are deleted permanently, not moved to the Trash — this cannot be undone.", "Delete Data")
         } else {
             (format!("Remove {what} from the list?"), "The downloaded files will be left on disk.", "Remove")
         };

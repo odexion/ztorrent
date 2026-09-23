@@ -468,6 +468,35 @@ fn remove_refuses_to_delete_outside_the_save_folder() {
 }
 
 #[test]
+fn remove_deletes_only_the_torrents_files_when_its_name_matches_a_users_folder() {
+    let dir = tempfile::tempdir().unwrap();
+    let downloads = dir.path().join("downloads");
+    std::fs::create_dir_all(downloads.join("Projects")).unwrap();
+    std::fs::write(downloads.join("Projects/mine.txt"), b"keep me").unwrap();
+    std::fs::write(downloads.join("Projects/a.bin.part"), b"torrent").unwrap();
+    let state = serde_json::json!({
+        "settings": { "downloadPath": downloads, "enableDHT": false, "enableUPnP": false },
+        "torrents": [
+            { "id": "clash", "name": "Projects", "savePath": downloads, "state": "stopped",
+              "files": [{ "name": "a.bin", "path": "Projects/a.bin", "length": 7 }] },
+            { "id": "bare", "name": "Projects", "savePath": downloads, "state": "stopped" }
+        ]
+    });
+    std::fs::write(dir.path().join("ztorrent-state.json"), state.to_string()).unwrap();
+    let h = spawn(Store::open(dir.path(), None), EngineOptions { data_dir: dir.path().to_path_buf(), version: "0.5.0".into() }).unwrap();
+    let mut w = Watch::new(&h);
+    h.commands.send(Command::Remove { ids: vec!["clash".into()], delete_data: true }).unwrap();
+    w.wait_log("Removed \"Projects\" and deleted its data.", 5);
+    assert!(!downloads.join("Projects/a.bin.part").exists(), "the torrent's own file went");
+    assert!(downloads.join("Projects/mine.txt").exists(), "the user's file in the same-named folder survived");
+    // With no file list -- a magnet that never got metadata -- nothing is touched.
+    h.commands.send(Command::Remove { ids: vec!["bare".into()], delete_data: true }).unwrap();
+    w.wait_log("Refusing to delete data for \"Projects\": its file list is not known", 5);
+    assert!(downloads.join("Projects/mine.txt").exists());
+    shutdown(h);
+}
+
+#[test]
 fn udp_trackers_are_refused_while_traffic_is_routed() {
     let dir = tempfile::tempdir().unwrap();
     let h = engine(dir.path(), |s| s.bind_interface = "utun-not-here".into());

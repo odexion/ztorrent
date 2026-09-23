@@ -1007,27 +1007,24 @@ impl Engine {
             }
             None => false,
         };
-        if delete_data && !released && name != "Downloading metadata" {
-            match paths::safe_top_level(&save_path, &name) {
-                Some(target) => {
-                    let part = PathBuf::from(format!("{}{PART_SUFFIX}", target.display()));
-                    for path in [target, part] {
-                        let result = if path.is_dir() {
-                            std::fs::remove_dir_all(&path)
-                        } else if path.exists() {
-                            std::fs::remove_file(&path)
-                        } else {
-                            Ok(())
-                        };
-                        if let Err(err) = result {
-                            self.log(format!("Could not delete data for \"{name}\": {err}"), LogLevel::Error);
-                        }
-                    }
-                }
-                None => self.log(
-                    format!("Refusing to delete data for \"{name}\": that name is not a plain file or folder name."),
+        // Out of the session, only the files the torrent lists are deleted, never
+        // a folder by the torrent's name: that name is the torrent author's (or a
+        // magnet's dn=) and can match a folder of the user's own.
+        if delete_data && !released {
+            let listed: Vec<String> = self.torrents[i].rec.files.iter().flatten().map(|f| f.path.clone()).collect();
+            if listed.is_empty() {
+                self.log(
+                    format!("Refusing to delete data for \"{name}\": its file list is not known, so nothing on disk can be matched to it."),
                     LogLevel::Error,
-                ),
+                );
+            } else {
+                let (refused, errors) = paths::delete_listed(&save_path, listed.iter().map(String::as_str), PART_SUFFIX);
+                for rel in refused {
+                    self.log(format!("Refusing to delete data for \"{name}\": {rel} is outside the save folder."), LogLevel::Error);
+                }
+                for err in errors {
+                    self.log(format!("Could not delete data for \"{name}\": {err}"), LogLevel::Error);
+                }
             }
         }
         if let Some(path) = self.resume_path(&self.torrents[i]) {
