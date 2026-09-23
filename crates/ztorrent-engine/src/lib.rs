@@ -157,6 +157,12 @@ impl Engine {
             suspended: Vec::new(),
         };
         engine.log_start();
+        // The bound interface is looked at before any torrent is added, so with
+        // it down at launch every restored torrent starts held, not running.
+        if engine.policy.as_ref().is_some_and(|p| p.bind.is_some()) {
+            engine.next_interface = now + Duration::from_secs(1);
+            engine.check_interface();
+        }
         engine.restore_session();
         Ok(engine)
     }
