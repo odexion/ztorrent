@@ -342,6 +342,41 @@ download() {
   ok "downloaded $label $C_DIM$G_DOT $(size_of "$got") in ${elapsed}s$C_RESET"
 }
 
+# GitHub publishes each asset's SHA-256 as "digest": "sha256:<hex>", in the
+# same object as its download URL and ahead of it -- read the way asset_size
+# reads "size". Reset at every URL, so an asset without one never borrows the
+# previous asset's.
+asset_digest() { # <download url> -> lowercase hex, or nothing
+  printf '%s' "$RELEASE" | tr ',' '\n' | awk -v want="$1" '
+    /"digest"[[:space:]]*:/ {
+      d = $0
+      sub(/.*"digest"[[:space:]]*:[[:space:]]*"sha256:/, "", d)
+      sub(/".*/, "", d)
+      last = (d ~ /^[0-9a-fA-F]+$/ && length(d) == 64) ? tolower(d) : ""
+    }
+    /browser_download_url/ { if (index($0, want)) { print last; exit } last = "" }'
+}
+
+sha256_of() { # <file> -> lowercase hex
+  if command -v shasum >/dev/null 2>&1; then shasum -a 256 "$1" | cut -d' ' -f1
+  elif command -v sha256sum >/dev/null 2>&1; then sha256sum "$1" | cut -d' ' -f1
+  fi
+}
+
+# verify <url> <file>: stops the install on a mismatch. As install.ps1 does, an
+# asset with no published digest is installed with a note rather than refused.
+verify() {
+  expected=$(asset_digest "$1")
+  if [ -z "$expected" ]; then
+    warn "  no checksum published for this asset - skipping verification"
+    return 0
+  fi
+  actual=$(sha256_of "$2" | tr 'A-F' 'a-f')
+  [ -n "$actual" ] || die "found neither shasum nor sha256sum to check the download with"
+  [ "$actual" = "$expected" ] || die "checksum mismatch - expected $expected, got $actual. Not installing."
+  ok "checksum verified"
+}
+
 size_of() { # <bytes> -> human
   LC_ALL=C awk -v b="${1:-0}" 'BEGIN{
     split("B KB MB GB", u, " "); i = 1
@@ -446,6 +481,7 @@ install_mac() {
   app="$dest/ztorrent.app"
 
   download "$url" "$WORK/ztorrent.dmg" "ztorrent $TAG"
+  verify "$url" "$WORK/ztorrent.dmg"
 
   spin_start "installing to $app"
 
@@ -456,8 +492,19 @@ install_mac() {
   src=$(find "$MNT" -maxdepth 1 -name '*.app' -print 2>/dev/null | head -n 1)
   [ -n "$src" ] || die "no .app inside the disk image"
 
-  [ -d "$app" ] && rm -rf "$app"
-  cp -R "$src" "$app"
+  # The old copy is moved aside, not deleted, until the new one is in place: a
+  # copy that fails part-way must not leave no ztorrent at all.
+  backup=""
+  if [ -d "$app" ]; then
+    backup="$app.old.$$"
+    mv "$app" "$backup" || die "could not move the installed copy aside"
+  fi
+  if ! cp -R "$src" "$app"; then
+    rm -rf "$app"
+    [ -n "$backup" ] && mv "$backup" "$app"
+    die "could not copy ztorrent.app into $dest - the previous version is still installed"
+  fi
+  [ -n "$backup" ] && rm -rf "$backup"
 
   # curl does not set the quarantine flag, but a re-run over a previously
   # quarantined copy might inherit one, and these builds are unsigned.
@@ -481,6 +528,7 @@ install_linux() {
   bin="$PREFIX/ztorrent"
 
   download "$url" "$WORK/ztorrent.AppImage" "ztorrent $TAG"
+  verify "$url" "$WORK/ztorrent.AppImage"
 
   spin_start "installing to $bin"
   chmod +x "$WORK/ztorrent.AppImage"
