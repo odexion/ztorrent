@@ -170,14 +170,20 @@ fn main() -> anyhow::Result<()> {
     }
     let codec = ztorrent_secrets::os_codec(APP_NAME, &dir);
     let store = Store::open(&dir, codec);
+    let version = env!("CARGO_PKG_VERSION").to_string();
+    // Update checks leave the way torrent traffic does: through the proxy, on
+    // the bound interface, or not at all. The policy in force is the one read
+    // at start-up, as it is for the engine.
+    let policy = ztorrent_core::egress::EgressPolicy::from_settings(store.settings());
+    let client_version = version.clone();
     let (update_tx, update_rx) = flume::unbounded();
     let updates = ztorrent_updater::spawn(ztorrent_updater::Options {
         dir: dir.join("updates"),
-        current: env!("CARGO_PKG_VERSION").to_string(),
+        current: version.clone(),
         events: update_tx,
         packaged: is_packaged(),
+        client: Box::new(move || ztorrent_engine::http_client(policy.as_ref(), &client_version)),
     });
-    let version = env!("CARGO_PKG_VERSION").to_string();
     let engine = ztorrent_engine::spawn(store, EngineOptions { data_dir: dir.clone(), version: version.clone() })?;
 
     // Terminated from outside -- a logout, `kill`, Ctrl+C in a terminal -- the

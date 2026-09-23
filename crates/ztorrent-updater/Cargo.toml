@@ -11,6 +11,13 @@ anyhow.workspace = true
 serde_json.workspace = true
 flume = "0.11"
 reqwest = { version = "0.12", default-features = false, features = ["blocking", "rustls-tls"] }
+sha2 = "0.10"
+
+[features]
+# Honours ZTORRENT_UPDATE_FEED and ZTORRENT_UPDATE_REPO in a release build, for
+# testing an update end to end. Never for a build that ships: whoever sets the
+# environment would choose what gets installed.
+update-testing = []
 
 [dev-dependencies]
 tempfile = "3"

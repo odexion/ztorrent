@@ -903,7 +903,10 @@ commits the table as a Rust test fixture.
   and spawn it detached, then quit.
 - **`openReleasePage()`** → `tag/vX` or `latest`.
 - **Environment:** `ZTORRENT_UPDATE_FEED`, `ZTORRENT_UPDATE_PRETEND_VERSION`,
-  `ZTORRENT_UPDATE_REPO`.
+  `ZTORRENT_UPDATE_REPO`. The feed and repo overrides are read only by debug
+  builds and by release builds made with `--features update-testing`; a shipped
+  build ignores them. Every download must match the asset's published SHA-256
+  `digest`, so a test feed has to carry one.
 - `compare_versions` is ported with its prerelease rule and a table test.
 
 ### 12.2 Packaging

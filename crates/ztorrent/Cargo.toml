@@ -18,6 +18,10 @@ serde_json.workspace = true
 ctrlc = { version = "3", features = ["termination"] }
 futures-channel = "0.3"
 
+[features]
+# See ztorrent-updater: lets a release build read its update feed from the environment.
+update-testing = ["ztorrent-updater/update-testing"]
+
 [build-dependencies]
 # Embeds the icon in ztorrent.exe; build.rs does nothing for other targets.
 winresource = "0.1"

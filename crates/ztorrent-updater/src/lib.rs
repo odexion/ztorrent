@@ -11,13 +11,19 @@
 //! is the old version starting again, never no version at all.
 //!
 //! Nothing is downloaded until a check finds a genuinely newer version, and
-//! nothing is swapped until the user asks.
+//! nothing is swapped until the user asks. Nothing is staged unless it matches
+//! the SHA-256 digest GitHub publishes for the asset.
+//!
+//! Every request goes through the client the app hands over, which follows the
+//! user's proxy and interface binding: an update check must not be the one
+//! thing that leaves by another route.
 //!
 //! The artifact naming here must agree with scripts/install.sh.
 
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::Command as Process;
+use sha2::{Digest, Sha256};
 use std::time::{Duration, Instant};
 use ztorrent_core::update::*;
 use ztorrent_core::version::compare_versions;
@@ -57,12 +63,43 @@ pub fn pick_asset<'a>(want: &WantedAsset, names: &'a [(String, String, u64)]) ->
         .find_map(|arch| names.iter().find(|(name, _, _)| name.ends_with(&format!("-{}-{arch}.{}", want.os, want.ext))))
 }
 
+/// Builds the HTTP client for one request. Built per request, as the engine's
+/// own is, so a bound interface's address is read when it is used.
+pub type ClientFactory = Box<dyn Fn() -> Result<reqwest::blocking::Client, String> + Send>;
+
+/// A client that goes straight out, ignoring any proxy in the environment. For
+/// tests; the app hands over one that follows its egress policy.
+pub fn direct_client(version: &str) -> ClientFactory {
+    let agent = format!("ztorrent/{version}");
+    Box::new(move || reqwest::blocking::Client::builder().no_proxy().user_agent(agent.clone()).build().map_err(|e| e.to_string()))
+}
+
+/// A test override from the environment. Only a debug build or one built with
+/// the `update-testing` feature reads these: in a shipped build they would let
+/// whoever sets the environment choose what gets installed.
+fn test_override(name: &str) -> Option<String> {
+    if cfg!(any(debug_assertions, feature = "update-testing")) { std::env::var(name).ok() } else { None }
+}
+
+/// The hex SHA-256 GitHub publishes for an asset, as "sha256:<hex>".
+pub fn asset_digest(release: &serde_json::Value, name: &str) -> Option<String> {
+    release["assets"]
+        .as_array()?
+        .iter()
+        .find(|a| a["name"].as_str() == Some(name))?["digest"]
+        .as_str()?
+        .strip_prefix("sha256:")
+        .filter(|h| h.len() == 64 && h.chars().all(|c| c.is_ascii_hexdigit()))
+        .map(|h| h.to_ascii_lowercase())
+}
+
 pub struct Options {
     pub dir: PathBuf,
     pub current: String,
     pub events: flume::Sender<UpdateStatus>,
     /// Refuses to apply anything unless this is an installed build.
     pub packaged: bool,
+    pub client: ClientFactory,
 }
 
 pub struct Updater {
@@ -74,6 +111,9 @@ pub struct Updater {
     packaged: bool,
     automatic: bool,
     next_check: Option<Instant>,
+    client: ClientFactory,
+    /// The published digest of the asset on offer.
+    digest: Option<String>,
 }
 
 /// Starts the updater thread and returns its command channel.
@@ -95,7 +135,7 @@ impl Updater {
         let current = std::env::var("ZTORRENT_UPDATE_PRETEND_VERSION").unwrap_or(options.current);
         let want = wanted_asset(std::env::consts::OS, std::env::consts::ARCH, std::env::var_os("APPIMAGE").is_some());
         Updater {
-            repo: std::env::var("ZTORRENT_UPDATE_REPO").unwrap_or_else(|_| REPO.into()),
+            repo: test_override("ZTORRENT_UPDATE_REPO").unwrap_or_else(|| REPO.into()),
             staged_dir: options.dir.join("staged"),
             dir: options.dir,
             status: UpdateStatus { installable: want.is_some(), current, ..Default::default() },
@@ -103,6 +143,8 @@ impl Updater {
             packaged: options.packaged,
             automatic: false,
             next_check: None,
+            client: options.client,
+            digest: None,
         }
     }
 
@@ -176,12 +218,8 @@ impl Updater {
     fn api(&self, url: &str) -> Result<serde_json::Value, String> {
         // A connection that stalls rather than refuses -- a captive portal, a
         // route that went away -- would otherwise leave the check pending forever.
-        let client = reqwest::blocking::Client::builder()
-            .timeout(CHECK_TIMEOUT)
-            .user_agent(format!("ztorrent/{}", self.status.current))
-            .build()
-            .map_err(|e| e.to_string())?;
-        let res = client.get(url).header("Accept", "application/vnd.github+json").send().map_err(|e| {
+        let client = (self.client)()?;
+        let res = client.get(url).timeout(CHECK_TIMEOUT).header("Accept", "application/vnd.github+json").send().map_err(|e| {
             if e.is_timeout() { "GitHub did not answer".to_string() } else { e.to_string() }
         })?;
         if !res.status().is_success() {
@@ -208,7 +246,7 @@ impl Updater {
             s.error_from = None;
             s.manual = manual;
         });
-        let feed = std::env::var("ZTORRENT_UPDATE_FEED").unwrap_or_else(|_| format!("https://api.github.com/repos/{}/releases/latest", self.repo));
+        let feed = test_override("ZTORRENT_UPDATE_FEED").unwrap_or_else(|| format!("https://api.github.com/repos/{}/releases/latest", self.repo));
         let result = self.api(&feed).and_then(|release| {
             let version = release["tag_name"].as_str().unwrap_or_default().trim_start_matches('v').to_string();
             if version.is_empty() { Err("the release has no tag".to_string()) } else { Ok((version, release)) }
@@ -251,6 +289,7 @@ impl Updater {
                     .unwrap_or_default();
                 let want = wanted_asset(std::env::consts::OS, std::env::consts::ARCH, std::env::var_os("APPIMAGE").is_some());
                 let asset = want.as_ref().and_then(|w| pick_asset(w, &assets)).cloned();
+                self.digest = asset.as_ref().and_then(|a| asset_digest(&release, &a.0));
                 self.set(|s| {
                     s.state = UpdateState::Available;
                     s.version = Some(version);
@@ -297,8 +336,10 @@ impl Updater {
         });
 
         let result = (|| -> Result<(), String> {
+            // Checked before a byte is fetched: a build nobody can verify is not installed.
+            let expected = self.digest.clone().ok_or("the release publishes no checksum for this build, so it cannot be verified")?;
             std::fs::create_dir_all(&self.dir).map_err(|e| e.to_string())?;
-            let client = reqwest::blocking::Client::builder().user_agent(format!("ztorrent/{}", self.status.current)).build().map_err(|e| e.to_string())?;
+            let client = (self.client)()?;
             let mut res = client.get(&url).send().map_err(|e| e.to_string())?;
             if !res.status().is_success() {
                 return Err(format!("download returned {}", res.status().as_u16()));
@@ -310,12 +351,14 @@ impl Updater {
             let mut out = std::fs::File::create(&part).map_err(|e| e.to_string())?;
             let mut buf = vec![0u8; 1 << 16];
             let (mut received, mut painted) = (0u64, 0u64);
+            let mut hasher = Sha256::new();
             loop {
                 let n = res.read(&mut buf).map_err(|e| e.to_string())?;
                 if n == 0 {
                     break;
                 }
                 out.write_all(&buf[..n]).map_err(|e| e.to_string())?;
+                hasher.update(&buf[..n]);
                 received += n as u64;
                 // A progress readout cannot usefully change more often than this.
                 if received - painted > 262_144 {
@@ -326,6 +369,10 @@ impl Updater {
             out.sync_all().map_err(|e| e.to_string())?;
             if total > 0 && received != total {
                 return Err(format!("expected {total} bytes, got {received}"));
+            }
+            let actual: String = hasher.finalize().iter().map(|b| format!("{b:02x}")).collect();
+            if actual != expected {
+                return Err(format!("checksum mismatch: expected {expected}, got {actual}. Not installing it."));
             }
             std::fs::rename(&part, &dest).map_err(|e| e.to_string())?;
             self.set(|s| {
@@ -425,7 +472,7 @@ impl Updater {
         }
         let (Some(payload), Some(target)) = (self.status.file.clone(), Self::install_target()) else { return false };
         if cfg!(windows) {
-            return self.run_installer(&payload);
+            return self.run_installer(&payload, &target);
         }
         let script = self.dir.join("apply.sh");
         if std::fs::write(&script, swap_script(&payload, &target, &self.staged_dir, &self.dir, cfg!(target_os = "macos"))).is_err() {
@@ -453,11 +500,11 @@ impl Updater {
     /// first -- on the way out it writes its state and resume data, which the
     /// installer's own kill would skip -- so a hidden script waits for it.
     #[cfg(windows)]
-    fn run_installer(&self, payload: &Path) -> bool {
+    fn run_installer(&self, payload: &Path, target: &Path) -> bool {
         use std::os::windows::process::CommandExt;
         const CREATE_NO_WINDOW: u32 = 0x0800_0000;
         let script = self.dir.join("apply.ps1");
-        if std::fs::write(&script, installer_script(payload, &self.staged_dir, &self.dir)).is_err() {
+        if std::fs::write(&script, installer_script(payload, target, &self.staged_dir, &self.dir)).is_err() {
             return false;
         }
         Process::new("powershell.exe")
@@ -473,7 +520,7 @@ impl Updater {
     }
 
     #[cfg(not(windows))]
-    fn run_installer(&self, _payload: &Path) -> bool {
+    fn run_installer(&self, _payload: &Path, _target: &Path) -> bool {
         false
     }
 }
@@ -485,7 +532,12 @@ fn ps(p: &Path) -> String {
 /// The Windows counterpart of [`swap_script`]: waits for the running copy, runs
 /// the installer silently, and cleans up. `/R` tells the installer to start the
 /// new version once it is in place.
-pub fn installer_script(payload: &Path, staged: &Path, dir: &Path) -> String {
+///
+/// An installer carrying a signature that does not check out -- altered after
+/// it was signed, or signed by nobody Windows trusts -- is not run, and the
+/// version already installed starts again instead. An unsigned one is allowed:
+/// releases are signed only where signing is set up, and its digest was checked.
+pub fn installer_script(payload: &Path, target: &Path, staged: &Path, dir: &Path) -> String {
     format!(
         r#"# Written by ztorrent to finish an update. Safe to delete.
 param([string]$AppPid = '')
@@ -498,13 +550,19 @@ if ([int]::TryParse($AppPid, [ref]$id) -and $id -gt 0) {{
 
 $installer = {p}
 if (Test-Path -LiteralPath $installer) {{
-  Start-Process -FilePath $installer -ArgumentList '/S', '/R' -Wait
+  $status = (Get-AuthenticodeSignature -LiteralPath $installer).Status
+  if ($status -eq 'Valid' -or $status -eq 'NotSigned') {{
+    Start-Process -FilePath $installer -ArgumentList '/S', '/R' -Wait
+  }} else {{
+    Start-Process -FilePath {t}
+  }}
   Remove-Item -LiteralPath $installer -Force -ErrorAction SilentlyContinue
 }}
 Remove-Item -LiteralPath {staged}, {json} -Recurse -Force -ErrorAction SilentlyContinue
 Remove-Item -LiteralPath $PSCommandPath -Force -ErrorAction SilentlyContinue
 "#,
         p = ps(payload),
+        t = ps(target),
         staged = ps(staged),
         json = ps(&dir.join("staged.json"))
     )
@@ -628,7 +686,7 @@ mod tests {
 
     fn updater(dir: &Path, current: &str) -> (Updater, flume::Receiver<UpdateStatus>) {
         let (tx, rx) = flume::unbounded();
-        (Updater::new(Options { dir: dir.to_path_buf(), current: current.into(), events: tx, packaged: false }), rx)
+        (Updater::new(Options { dir: dir.to_path_buf(), current: current.into(), events: tx, packaged: false, client: direct_client(current) }), rx)
     }
 
     #[test]
@@ -665,6 +723,7 @@ mod tests {
     fn the_windows_script_quotes_paths_waits_and_restarts() {
         let s = installer_script(
             Path::new(r"C:\Users\o'neil\AppData\Roaming\ztorrent\updates\ztorrent-0.6.0-win-x64.exe"),
+            Path::new(r"C:\Users\o'neil\AppData\Local\ztorrent\ztorrent.exe"),
             Path::new(r"C:\u\staged"),
             Path::new(r"C:\u"),
         );
@@ -672,6 +731,8 @@ mod tests {
         assert!(s.contains("[int]::TryParse($AppPid, [ref]$id) -and $id -gt 0"), "a pid that is not one skips the wait");
         assert!(s.contains("Wait-Process -Id $id"), "the app exits, and saves, before the installer runs");
         assert!(s.contains("-ArgumentList '/S', '/R' -Wait"), "silent, and starts the new version");
+        assert!(s.contains("$status -eq 'Valid' -or $status -eq 'NotSigned'"), "a broken signature is never run");
+        assert!(s.contains(r"Start-Process -FilePath 'C:\Users\o''neil\AppData\Local\ztorrent\ztorrent.exe'"), "the old version starts instead");
     }
 
     /// The three outcomes the Electron commit was verified against: a swap that
@@ -695,6 +756,62 @@ mod tests {
         std::fs::write(&script, swap_script(&missing, &target, &dir.path().join("staged"), dir.path(), false)).unwrap();
         Process::new("/bin/sh").arg(&script).arg("0").status().unwrap();
         assert_eq!(std::fs::read_to_string(&target).unwrap(), "#!/bin/sh\necho new\n", "a failed copy leaves the old build");
+    }
+
+    #[test]
+    fn reads_the_published_digest_and_nothing_malformed() {
+        let hex = "ab".repeat(32);
+        let release = serde_json::json!({ "assets": [
+            { "name": "ztorrent-0.6.0-mac-arm64.dmg", "digest": format!("sha256:{}", hex.to_uppercase()) },
+            { "name": "ztorrent-0.6.0-mac-x64.dmg", "digest": "sha256:short" },
+            { "name": "ztorrent-0.6.0-win-x64.exe" },
+        ]});
+        assert_eq!(asset_digest(&release, "ztorrent-0.6.0-mac-arm64.dmg"), Some(hex));
+        assert_eq!(asset_digest(&release, "ztorrent-0.6.0-mac-x64.dmg"), None);
+        assert_eq!(asset_digest(&release, "ztorrent-0.6.0-win-x64.exe"), None);
+    }
+
+    /// A tiny release served from loopback: the download passes only when its
+    /// bytes match the digest, and never when no digest is published. (What
+    /// happens after -- staging -- is per platform; macOS wants a real .dmg.)
+    #[test]
+    fn a_download_is_accepted_only_when_it_matches_its_digest() {
+        use std::net::TcpListener;
+        let body = b"#!/bin/sh\necho new\n".to_vec();
+        let good: String = Sha256::digest(&body).iter().map(|b| format!("{b:02x}")).collect();
+        for (digest, refusal) in [(Some(good), None), (Some("00".repeat(32)), Some("checksum mismatch")), (None, Some("publishes no checksum"))] {
+            let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+            let url = format!("http://{}/ztorrent-0.6.0-linux-x86_64.AppImage", listener.local_addr().unwrap());
+            let served = body.clone();
+            std::thread::spawn(move || {
+                let (mut conn, _) = listener.accept().unwrap();
+                let mut req = [0u8; 1024];
+                let _ = conn.read(&mut req);
+                let _ = write!(conn, "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n", served.len());
+                let _ = conn.write_all(&served);
+            });
+            let dir = tempfile::tempdir().unwrap();
+            let (mut u, _) = updater(dir.path(), "0.5.0");
+            u.status.state = UpdateState::Available;
+            u.status.version = Some("0.6.0".into());
+            u.status.url = Some(url);
+            u.digest = digest;
+            let s = u.download();
+            let error = s.error.clone().unwrap_or_default();
+            match refusal {
+                Some(why) => {
+                    assert!(error.contains(why), "{error}");
+                    assert_eq!(s.error_from, Some(UpdateStep::Download));
+                    assert!(!dir.path().join("staged.json").exists(), "nothing staged");
+                }
+                None => {
+                    assert!(!error.contains("checksum"), "{error}");
+                    if !cfg!(target_os = "macos") {
+                        assert_eq!(s.state, UpdateState::Ready, "{error}");
+                    }
+                }
+            }
+        }
     }
 
     #[test]

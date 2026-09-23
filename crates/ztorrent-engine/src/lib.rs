@@ -14,7 +14,7 @@ mod paths;
 mod torrent;
 
 pub use details::share_ratio;
-pub use net::{fetch_torrent, list_interfaces};
+pub use net::{client as http_client, fetch_torrent, list_interfaces};
 
 use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD as B64;
