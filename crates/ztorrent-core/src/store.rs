@@ -44,6 +44,9 @@ pub struct StateData {
     pub window: Option<WindowBounds>,
     /// Top-level keys this build does not know.
     pub extra: Map<String, Value>,
+    /// Torrent rows this build could not read, written back as they were so a
+    /// row it does not understand is never silently dropped.
+    pub unreadable_torrents: Vec<Value>,
 }
 
 pub struct Store {
@@ -69,11 +72,20 @@ impl Store {
 
     fn read(&self) -> StateData {
         let source = self.legacy_file.as_deref().unwrap_or(&self.file);
-        let parsed: Value = fs::read_to_string(source)
-            .ok()
-            .and_then(|t| serde_json::from_str(&t).ok())
-            .filter(Value::is_object)
-            .unwrap_or_else(|| Value::Object(Map::new()));
+        let text = fs::read_to_string(source).ok();
+        let parsed = text.as_deref().and_then(|t| serde_json::from_str::<Value>(t).ok()).filter(Value::is_object);
+        // A file that is there but cannot be read is set aside before anything
+        // is written over it: starting empty is survivable, losing the library
+        // to the first save afterwards is not. A legacy file is never written to.
+        if parsed.is_none() && text.is_some() && self.legacy_file.is_none() {
+            let millis = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis()).unwrap_or(0);
+            let backup = self.dir.join(format!("{STATE_FILE}.corrupt-{millis}"));
+            match fs::rename(&self.file, &backup) {
+                Ok(()) => eprintln!("[store] {} could not be read; kept it as {}", self.file.display(), backup.display()),
+                Err(err) => eprintln!("[store] {} could not be read, nor set aside: {err}", self.file.display()),
+            }
+        }
+        let parsed = parsed.unwrap_or_else(|| Value::Object(Map::new()));
         let Value::Object(mut obj) = parsed else { unreachable!() };
 
         let mut settings = Settings::from_json(obj.get("settings").unwrap_or(&Value::Null));
@@ -82,10 +94,18 @@ impl Store {
         settings.alt_speed_enabled = false;
         self.open_secrets(&mut settings);
 
-        let torrents = match obj.remove("torrents") {
-            Some(Value::Array(rows)) => rows.into_iter().filter_map(|r| serde_json::from_value(r).ok()).collect(),
-            _ => Vec::new(),
-        };
+        let (mut torrents, mut unreadable_torrents) = (Vec::new(), Vec::new());
+        if let Some(Value::Array(rows)) = obj.remove("torrents") {
+            for row in rows {
+                match serde_json::from_value::<TorrentRecord>(row.clone()) {
+                    Ok(t) => torrents.push(t),
+                    Err(err) => {
+                        eprintln!("[store] kept a torrent row this build cannot read: {err}");
+                        unreadable_torrents.push(row);
+                    }
+                }
+            }
+        }
         let labels = match obj.remove("labels") {
             Some(Value::Array(a)) => a.into_iter().filter_map(|v| v.as_str().map(String::from)).collect(),
             _ => Vec::new(),
@@ -100,7 +120,7 @@ impl Store {
         let columns = obj.remove("columns").and_then(|v| serde_json::from_value(v).ok());
         let window = obj.remove("window").and_then(|v| serde_json::from_value(v).ok());
         obj.remove("settings");
-        StateData { settings, torrents, labels, label_styles, columns, window, extra: obj }
+        StateData { settings, torrents, labels, label_styles, columns, window, extra: obj, unreadable_torrents }
     }
 
     /// Opens sealed secrets. A refused or missing codec leaves the value empty in
@@ -176,7 +196,12 @@ impl Store {
 
         let mut out = Map::new();
         out.insert("settings".into(), Value::Object(settings));
-        out.insert("torrents".into(), serde_json::to_value(&self.data.torrents).unwrap_or(Value::Array(vec![])));
+        let mut torrents = match serde_json::to_value(&self.data.torrents) {
+            Ok(Value::Array(rows)) => rows,
+            _ => Vec::new(),
+        };
+        torrents.extend(self.data.unreadable_torrents.iter().cloned());
+        out.insert("torrents".into(), Value::Array(torrents));
         out.insert("labels".into(), serde_json::to_value(&self.data.labels).unwrap_or(Value::Array(vec![])));
         out.insert("labelStyles".into(), serde_json::to_value(&self.data.label_styles).unwrap_or_default());
         out.insert("columns".into(), serde_json::to_value(&self.data.columns).unwrap_or(Value::Null));
@@ -332,9 +357,29 @@ mod tests {
 
         let broken = tempfile::tempdir().unwrap();
         fs::write(broken.path().join(STATE_FILE), "{ not json").unwrap();
-        let store = Store::open(broken.path(), None);
+        let mut store = Store::open(broken.path(), None);
         assert!(store.data.torrents.is_empty());
         assert_eq!(store.settings().global_max_connections, 200);
+        store.flush();
+        let kept: Vec<_> = fs::read_dir(broken.path())
+            .unwrap()
+            .flatten()
+            .filter(|e| e.file_name().to_string_lossy().starts_with(&format!("{STATE_FILE}.corrupt-")))
+            .collect();
+        assert_eq!(kept.len(), 1, "the unreadable file was set aside, not overwritten");
+        assert_eq!(fs::read_to_string(kept[0].path()).unwrap(), "{ not json");
+    }
+
+    #[test]
+    fn a_torrent_row_that_cannot_be_read_is_written_back() {
+        let dir = tempfile::tempdir().unwrap();
+        fs::write(dir.path().join(STATE_FILE), r#"{"torrents":[{"id":"ok","name":"Fine"},"not a torrent"]}"#).unwrap();
+        let mut store = Store::open(dir.path(), None);
+        assert_eq!(store.data.torrents.len(), 1);
+        store.flush();
+        let rows = on_disk(dir.path())["torrents"].as_array().unwrap().clone();
+        assert_eq!(rows.len(), 2);
+        assert_eq!(rows[1], "not a torrent");
     }
 
     #[test]
