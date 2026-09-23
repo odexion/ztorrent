@@ -79,8 +79,11 @@ runs:
       shell: bash
       run: echo "BOOST_INCLUDE=${{ runner.temp }}/boost-${BOOST_VERSION}" >> "$GITHUB_ENV"
 
-    - uses: dtolnay/rust-toolchain@stable
+    # Pinned by commit, so the toolchain it installs is named here rather than
+    # taken from the ref.
+    - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
       with:
+        toolchain: stable
         targets: ${{ inputs.target }}
 
     # Caches are saved from main only, and read everywhere. GitHub scopes a
@@ -89,7 +92,7 @@ runs:
     # or pull request reads main's instead. rust-cache also drops this
     # workspace's own crates and incremental state, which keeps each entry
     # small enough that the jobs' caches together fit GitHub's 10 GB.
-    - uses: Swatinem/rust-cache@v2
+    - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
       with:
         shared-key: ${{ inputs.cache-key }}
         save-if: ${{ github.ref == 'refs/heads/main' }}

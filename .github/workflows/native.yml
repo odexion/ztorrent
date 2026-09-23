@@ -154,7 +154,7 @@ jobs:
 
       - name: Sign the app
         if: env.SIGNPATH_SIGN == 'true'
-        uses: signpath/github-action-submit-signing-request@v3
+        uses: signpath/github-action-submit-signing-request@f6d04783b4569d051e0c80105fe66e82819d0092 # v3
         with:
           api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
           organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
@@ -172,7 +172,7 @@ jobs:
       # A prebuilt binary where there is one, rather than compiling it each run.
       - name: Install cargo-packager
         if: env.SHIP == 'true'
-        uses: taiki-e/install-action@v2
+        uses: taiki-e/install-action@7623a79cdfecb99d681017af368ca353d9f49bb5 # v2
         with:
           tool: cargo-packager@0.11.8
 
@@ -203,7 +203,7 @@ jobs:
 
       - name: Sign the installer
         if: env.SIGNPATH_SIGN == 'true'
-        uses: signpath/github-action-submit-signing-request@v3
+        uses: signpath/github-action-submit-signing-request@f6d04783b4569d051e0c80105fe66e82819d0092 # v3
         with:
           api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
           organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
