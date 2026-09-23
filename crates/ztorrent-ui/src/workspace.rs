@@ -13,7 +13,7 @@ use std::path::PathBuf;
 use ztorrent_core::command::{Bootstrap, Command, TorrentSource};
 use ztorrent_core::settings::patch;
 use ztorrent_core::store::WindowBounds;
-use ztorrent_core::{Event, columns};
+use ztorrent_core::{Event, columns, tag_style};
 
 #[derive(Clone)]
 pub struct DraggedTorrents {
@@ -384,12 +384,15 @@ impl Workspace {
             return;
         }
         let ids = ids.unwrap_or_else(|| self.ids());
-        crate::dialogs::prompt(window, cx, "New Label", "Label name:", "", move |name, cx| {
-            if !ids.is_empty() {
-                send(cx, Command::SetLabel { ids: ids.clone(), label: name.trim().to_string() });
+        crate::dialogs::open_new_label(window, cx, move |name, style, cx| {
+            // The style goes first, so the label appears already wearing it;
+            // the default look is left unstored.
+            if (style.symbol.as_str(), style.color.as_str()) != tag_style(None) {
+                send(cx, Command::SetLabelStyle { name: name.clone(), style: Some(style) });
             }
-        });
-    }
+            // With nothing selected this still creates the label, empty.
+            send(cx, Command::SetLabel { ids: ids.clone(), label: name });
+        });    }
 
     /// A torrent handed to the app from outside: a double-clicked file, a magnet
     /// link, a second launch, or a drop.

@@ -1210,46 +1210,9 @@ impl LabelStyleSheet {
 impl Render for LabelStyleSheet {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let p = Theme::get(cx).clone();
-        let mut colors = div().flex().gap(px(10.)).mb(px(18.));
-        for c in TAG_COLORS {
-            let selected = self.color == c;
-            colors = colors.child(
-                div()
-                    .id(c)
-                    .size(px(26.))
-                    .rounded_full()
-                    .bg(p.tag(c))
-                    .when(selected, |d| d.border_2().border_color(p.accent))
-                    .hover(|s| s.opacity(0.85))
-                    .on_click(cx.listener(move |this, _, _, cx| {
-                        this.color = c.into();
-                        cx.notify();
-                    })),
-            );
-        }
-        let mut symbols = div().flex().flex_wrap().gap(px(6.));
-        for s in TAG_SYMBOLS {
-            let selected = self.symbol == s;
-            symbols = symbols.child(
-                div()
-                    .id(s)
-                    .flex()
-                    .items_center()
-                    .justify_center()
-                    .w(px(40.))
-                    .h(px(36.))
-                    .rounded(RADIUS)
-                    .bg(if selected { p.accent_soft } else { p.sunken })
-                    .border_1()
-                    .border_color(if selected { p.accent } else { gpui::transparent_black() })
-                    .child(icon(s, 18., p.ink))
-                    .on_click(cx.listener(move |this, _, _, cx| {
-                        this.symbol = s.into();
-                        cx.notify();
-                    })),
-            );
-        }
-        let small = |t: &str| div().mb(px(8.)).text_size(px(11.)).font_weight(FontWeight::SEMIBOLD).text_color(p.ink_faint).child(t.to_string());
+        let colors = color_row(&p, &self.color, cx, |this: &mut Self, c| this.color = c.into());
+        let symbols = symbol_grid(&p, &self.symbol, cx, |this: &mut Self, s| this.symbol = s.into());
+        let small = |t: &str| small_heading(&p, t);
         div()
             .flex()
             .flex_col()
@@ -1276,6 +1239,134 @@ impl Render for LabelStyleSheet {
                 footer(&p, None)
                     .child(Button::new("cancel").label("Cancel").on_click(|_, window, cx| window.close_dialog(cx)))
                     .child(div().debug_selector(|| "label-ok".into()).child(Button::new("ok").label("OK").primary().on_click(cx.listener(|this, _, window, cx| this.ok(window, cx))))),
+            )
+    }
+}
+
+fn small_heading(p: &Palette, text: &str) -> Div {
+    div().mb(px(8.)).text_size(px(11.)).font_weight(FontWeight::SEMIBOLD).text_color(p.ink_faint).child(text.to_string())
+}
+
+/// The label hues as a row of swatches, `selected` ringed; a click hands the
+/// hue to `set`.
+fn color_row<T: 'static>(p: &Palette, selected: &str, cx: &mut Context<T>, set: fn(&mut T, &'static str)) -> Div {
+    let mut colors = div().flex().justify_between().mb(px(18.));
+    for c in TAG_COLORS {
+        let on = selected == c;
+        let swatch = div().id(c).debug_selector(move || format!("color-{c}")).size(px(26.)).rounded_full();
+        // Ink follows the theme, so its swatch shows both faces, dark | light.
+        // Drawn in layers rather than with a border, which would take room from
+        // the halves and leave it smaller than its neighbours. The half that
+        // matches the sheet gets a hairline edge, or it melts into the sheet
+        // and reads smaller than the other.
+        let swatch = if c == "ink" {
+            let (dark, light) = Palette::ink_pair();
+            let layer = |name: &str, color: Hsla| icon(name, 26., color).absolute().top_0().left_0();
+            let edge = if p.ink == dark { "arc-right" } else { "arc-left" };
+            swatch
+                .relative()
+                .child(layer("half-left", dark))
+                .child(layer("half-right", light))
+                .child(if on { layer("ring", p.accent) } else { layer(edge, p.line_hard) })
+        } else {
+            swatch.bg(p.tag(c)).when(on, |d| d.border_2().border_color(p.accent))
+        };
+        colors = colors.child(
+            swatch
+                .hover(|s| s.opacity(0.85))
+                .on_click(cx.listener(move |this, _, _, cx| {
+                    set(this, c);
+                    cx.notify();
+                })),
+        );
+    }
+    colors
+}
+
+/// The label symbols as rows of tiles that share the width, `selected`
+/// outlined; a click hands the symbol to `set`.
+fn symbol_grid<T: 'static>(p: &Palette, selected: &str, cx: &mut Context<T>, set: fn(&mut T, &'static str)) -> Div {
+    let mut grid = div().flex().flex_col().gap(px(6.));
+    for chunk in TAG_SYMBOLS.chunks(SYMBOLS_PER_ROW) {
+        let mut row = div().flex().gap(px(6.));
+        for &s in chunk {
+            let on = selected == s;
+            row = row.child(
+                div()
+                    .id(s)
+                    .debug_selector(move || format!("symbol-{s}"))
+                    .flex()
+                    .flex_1()
+                    .items_center()
+                    .justify_center()
+                    .h(px(36.))
+                    .rounded(RADIUS)
+                    .bg(if on { p.accent_soft } else { p.sunken })
+                    .border_1()
+                    .border_color(if on { p.accent } else { gpui::transparent_black() })
+                    .child(icon(s, 18., p.ink))
+                    .on_click(cx.listener(move |this, _, _, cx| {
+                        set(this, s);
+                        cx.notify();
+                    })),
+            );
+        }
+        grid = grid.child(row);
+    }
+    grid
+}
+
+const SYMBOLS_PER_ROW: usize = 8;
+
+// --------------------------------------------------------------- New Label
+
+pub struct NewLabelSheet {
+    input: Entity<InputState>,
+    symbol: String,
+    color: String,
+    on_ok: Rc<dyn Fn(String, LabelStyle, &mut App)>,
+}
+
+/// Asks for a new label's name, colour and symbol.
+pub fn open_new_label<V: 'static>(window: &mut Window, cx: &mut Context<V>, ok: impl Fn(String, LabelStyle, &mut App) + 'static) {
+    let input = text_input(window, cx, "", "");
+    let (symbol, color) = tag_style(None);
+    let sheet = cx.new(|_| NewLabelSheet { input: input.clone(), symbol: symbol.into(), color: color.into(), on_ok: Rc::new(ok) });
+    let target = sheet.clone();
+    open(window, cx, 400., sheet, Confirm::With(Rc::new(move |window, cx| target.update(cx, |s, cx| s.submit(window, cx)))));
+    input.update(cx, |s, cx| s.focus(window, cx));
+}
+
+impl NewLabelSheet {
+    fn submit(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let name = read(&self.input, cx).trim().to_string();
+        if name.is_empty() {
+            return;
+        }
+        (self.on_ok)(name, LabelStyle { symbol: self.symbol.clone(), color: self.color.clone() }, cx);
+        window.close_dialog(cx);
+    }
+}
+
+impl Render for NewLabelSheet {
+    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let p = Theme::get(cx).clone();
+        let colors = color_row(&p, &self.color, cx, |this: &mut Self, c| this.color = c.into());
+        let symbols = symbol_grid(&p, &self.symbol, cx, |this: &mut Self, s| this.symbol = s.into());
+        div()
+            .flex()
+            .flex_col()
+            .child(title(&p, "New Label"))
+            .child(small_heading(&p, "NAME"))
+            .child(div().mb(px(18.)).child(Input::new(&self.input).prefix(icon(&self.symbol, 16., p.tag(&self.color)))))
+            .child(small_heading(&p, "COLOR"))
+            .child(colors)
+            .child(small_heading(&p, "SYMBOL"))
+            .child(symbols)
+            .child(
+                footer(&p, None)
+                    .child(Button::new("cancel").label("Cancel").on_click(|_, window, cx| window.close_dialog(cx)))
+                    .child(div().debug_selector(|| "new-label-ok".into()).child(Button::new("ok").label("OK").primary().on_click(cx.listener(|this, _, window, cx| this.submit(window, cx))))),
             )
     }
 }

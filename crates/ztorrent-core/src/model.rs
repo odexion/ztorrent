@@ -187,13 +187,16 @@ where
 
 /// The symbols a label may wear, in picker order: the tag first as the default,
 /// then marks, then the kinds of thing people keep.
-pub const TAG_SYMBOLS: [&str; 16] = [
-    "label", "star", "heart", "flag", "bookmark", "pin", "folder", "box", "disc", "film", "music",
-    "image", "book", "monitor", "gamepad", "terminal",
+pub const TAG_SYMBOLS: [&str; 32] = [
+    "label", "star", "heart", "flag", "bookmark", "pin", "key", "lock",
+    "folder", "box", "archive", "document", "book", "graduation", "code", "terminal",
+    "film", "tv", "music", "headphones", "mic", "image", "camera", "disc",
+    "monitor", "gamepad", "globe", "cloud", "rocket", "flame", "trophy", "leaf",
 ];
 
-/// The hues a label may wear. Slate leads because it is the absence of a choice.
-pub const TAG_COLORS: [&str; 8] = ["slate", "blue", "teal", "green", "amber", "red", "violet", "pink"];
+/// The hues a label may wear. Slate leads because it is the absence of a choice;
+/// ink is the text colour, black on light and white on dark.
+pub const TAG_COLORS: [&str; 9] = ["slate", "ink", "blue", "teal", "green", "amber", "red", "violet", "pink"];
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]

@@ -54,7 +54,6 @@ pub struct Palette {
     pub piece_partial: Hsla,
 
     pub ok: Hsla,
-    pub fin: Hsla,
     pub warn: Hsla,
     pub warn_soft: Hsla,
     pub alt_wash: Hsla,
@@ -62,6 +61,11 @@ pub struct Palette {
     pub err: Hsla,
     pub down: Hsla,
     pub up: Hsla,
+    /// Torrent-state icons in the sidebar and list -- macOS system colours.
+    pub state_seed: Hsla,
+    pub state_fin: Hsla,
+    pub state_active: Hsla,
+    pub state_idle: Hsla,
 
     pub tag_slate: Hsla,
     pub tag_blue: Hsla,
@@ -104,16 +108,15 @@ impl Palette {
             sel_blur: c(0, 0, 0, 0.05),
             sel_quiet: c(0, 0, 0, 0.10),
             bar_track: c(0, 0, 0, 0.07),
-            bar: hex(0x0091ff),
-            bar_seed: hex(0x46a758),
-            bar_fin: hex(0x6e56cf),
-            bar_idle: hex(0x889096),
+            bar: hex(0x2f7bf6),
+            bar_seed: hex(0x28a745),
+            bar_fin: hex(0xaf52de),
+            bar_idle: hex(0x8e8e93),
             bar_err: hex(0xe5484d),
             bar_label: hex(0x5f666e),
             bar_label_on: hex(0xffffff),
             piece_partial: hex(0xe8a317),
             ok: hex(0x1a8a5a),
-            fin: hex(0x6e56cf),
             warn: hex(0xb07500),
             warn_soft: c(176, 117, 0, 0.13),
             alt_wash: c(214, 69, 69, 0.055),
@@ -121,14 +124,18 @@ impl Palette {
             err: hex(0xd64545),
             down: hex(0x2f7bf6),
             up: hex(0x22a06b),
-            tag_slate: hex(0x6b7076),
+            state_seed: hex(0x28a745),
+            state_fin: hex(0xaf52de),
+            state_active: hex(0xf08000),
+            state_idle: hex(0x8e8e93),
+            tag_slate: hex(0x8e8e93),
             tag_blue: hex(0x2f7bf6),
-            tag_teal: hex(0x0d87a8),
-            tag_green: hex(0x22a06b),
-            tag_amber: hex(0xb07500),
-            tag_red: hex(0xd64545),
-            tag_violet: hex(0x6e56cf),
-            tag_pink: hex(0xc2298a),
+            tag_teal: hex(0x1fa5c0),
+            tag_green: hex(0x28a745),
+            tag_amber: hex(0xf08000),
+            tag_red: hex(0xff3b30),
+            tag_violet: hex(0xaf52de),
+            tag_pink: hex(0xff2d55),
             chart_down_fill: c(47, 123, 246, 0.16),
             chart_up_fill: c(34, 160, 107, 0.16),
             overlay: c(0, 0, 0, 0.32),
@@ -162,16 +169,15 @@ impl Palette {
             sel_blur: c(255, 255, 255, 0.07),
             sel_quiet: c(255, 255, 255, 0.11),
             bar_track: c(255, 255, 255, 0.10),
-            bar: hex(0x0091ff),
-            bar_seed: hex(0x46a758),
-            bar_fin: hex(0x6e56cf),
-            bar_idle: hex(0x889096),
+            bar: hex(0x4b90ff),
+            bar_seed: hex(0x30d158),
+            bar_fin: hex(0xbf5af2),
+            bar_idle: hex(0x98989d),
             bar_err: hex(0xe5484d),
             bar_label: ink_dim,
             bar_label_on: hex(0xffffff),
             piece_partial: hex(0xe0aa3c),
             ok: hex(0x3fc38a),
-            fin: hex(0x9d8cdf),
             warn: hex(0xe0aa3c),
             warn_soft: c(224, 170, 60, 0.17),
             alt_wash: c(240, 104, 95, 0.075),
@@ -179,14 +185,18 @@ impl Palette {
             err: hex(0xf0685f),
             down: hex(0x4b90ff),
             up: hex(0x3fc38a),
-            tag_slate: hex(0x9aa0a8),
+            state_seed: hex(0x30d158),
+            state_fin: hex(0xbf5af2),
+            state_active: hex(0xff9f0a),
+            state_idle: hex(0x98989d),
+            tag_slate: hex(0x98989d),
             tag_blue: hex(0x4b90ff),
-            tag_teal: hex(0x3ab6cf),
-            tag_green: hex(0x3fc38a),
-            tag_amber: hex(0xe0aa3c),
-            tag_red: hex(0xf0685f),
-            tag_violet: hex(0x9d8cdf),
-            tag_pink: hex(0xee7bbb),
+            tag_teal: hex(0x40c8e0),
+            tag_green: hex(0x30d158),
+            tag_amber: hex(0xff9f0a),
+            tag_red: hex(0xff453a),
+            tag_violet: hex(0xbf5af2),
+            tag_pink: hex(0xff375f),
             chart_down_fill: c(75, 144, 255, 0.20),
             chart_up_fill: c(47, 189, 130, 0.20),
             overlay: c(0, 0, 0, 0.32),
@@ -201,20 +211,26 @@ impl Palette {
         self.down
     }
     pub fn ic_seeding(&self) -> Hsla {
-        self.up
+        self.state_seed
     }
     pub fn ic_completed(&self) -> Hsla {
-        self.fin
+        self.state_fin
     }
     pub fn ic_active(&self) -> Hsla {
-        self.warn
+        self.state_active
     }
     pub fn ic_inactive(&self) -> Hsla {
-        self.bar_idle
+        self.state_idle
+    }
+
+    /// The text colour of each theme, light first: what an "ink" label wears.
+    pub fn ink_pair() -> (Hsla, Hsla) {
+        (Palette::classic().ink, Palette::graphite().ink)
     }
 
     pub fn tag(&self, name: &str) -> Hsla {
         match name {
+            "ink" => self.ink,
             "blue" => self.tag_blue,
             "teal" => self.tag_teal,
             "green" => self.tag_green,

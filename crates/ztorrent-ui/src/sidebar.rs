@@ -1,5 +1,5 @@
 use crate::actions::CustomizeLabel;
-use crate::icons::icon;
+use crate::icons::bold_icon;
 use crate::theme::{Palette, RADIUS, Theme};
 use crate::workspace::{DraggedTorrents, Workspace};
 use gpui::prelude::*;
@@ -34,7 +34,7 @@ impl Workspace {
                     .px(px(10.))
                     .flex()
                     .items_center()
-                    .text_size(px(11.))
+                    .text_size(px(12.))
                     .font_weight(FontWeight::SEMIBOLD)
                     .text_color(p.ink_faint)
                     .child("LABELS"),
@@ -58,7 +58,7 @@ impl Workspace {
                 .rounded(RADIUS)
                 .text_color(p.ink_faint)
                 .hover(|s| s.bg(p.hover).text_color(p.ink))
-                .child(icon("create", 14., p.ink_faint))
+                .child(bold_icon("create", 16., p.ink_faint))
                 .child("New Label…")
                 .on_click(cx.listener(|this, _, window, cx| this.new_label(None, window, cx)))
                 .drag_over::<DraggedTorrents>({
@@ -80,7 +80,7 @@ impl Workspace {
             .py(px(10.))
             .px(px(8.))
             .bg(p.sidebar)
-            .text_size(px(13.))
+            .text_size(px(14.))
             .child(torrents)
             .child(labels)
     }
@@ -115,9 +115,9 @@ impl Workspace {
             .when(selected || root, |d| d.font_weight(FontWeight::MEDIUM))
             .when(selected, |d| d.bg(p.sel_quiet))
             .when(!selected, |d| d.hover(|s| s.bg(p2.hover)))
-            .child(icon(ic, 16., color))
+            .child(bold_icon(ic, 18., color))
             .child(div().flex_1().min_w_0().truncate().child(label.to_string()))
-            .child(div().text_size(px(12.)).text_color(p.ink_faint).font_features(crate::theme::tabular()).child(format!("({count})")))
+            .child(div().text_size(px(13.)).text_color(p.ink_faint).font_features(crate::theme::tabular()).child(format!("({count})")))
             .on_click(cx.listener({
                 let cat = cat.clone();
                 move |this, _, _, cx| {

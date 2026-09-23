@@ -353,6 +353,36 @@ fn new_label_prompt_sets_the_label(cx: &mut TestAppContext) {
 }
 
 #[gpui::test]
+fn new_label_can_choose_a_colour_and_symbol(cx: &mut TestAppContext) {
+    let mut h = harness(cx, boot());
+    h.tick(rows());
+    h.act(NewLabel);
+    h.cx.executor().advance_clock(std::time::Duration::from_secs(1));
+    h.settle();
+    h.cx.simulate_input("shows");
+    h.click("color-ink");
+    h.click("symbol-tv");
+    h.click("new-label-ok");
+    let sent = h.sent();
+    assert!(sent.iter().any(|c| matches!(c, Command::SetLabelStyle { name, style: Some(s) } if name == "shows" && s.symbol == "tv" && s.color == "ink")));
+    assert!(sent.iter().any(|c| matches!(c, Command::SetLabel { label, .. } if label == "shows")));
+    assert!(!h.dialog_open());
+}
+
+/// With nothing selected, New Label still creates the label.
+#[gpui::test]
+fn new_label_without_a_selection_creates_it(cx: &mut TestAppContext) {
+    let mut h = harness(cx, Bootstrap { rows: vec![], ..boot() });
+    h.act(NewLabel);
+    h.cx.executor().advance_clock(std::time::Duration::from_secs(1));
+    h.settle();
+    h.cx.simulate_input("later");
+    h.click("new-label-ok");
+    assert!(h.sent().iter().any(|c| matches!(c, Command::SetLabel { label, ids } if label == "later" && ids.is_empty())));
+    assert!(!h.dialog_open());
+}
+
+#[gpui::test]
 fn add_from_url_turns_an_info_hash_into_a_magnet(cx: &mut TestAppContext) {
     let mut h = harness(cx, boot());
     h.act(AddUrl);

@@ -293,8 +293,8 @@ impl Workspace {
                 let ic = state_icon(r);
                 let color = match ic {
                     "downloading" => p.down,
-                    "seeding" => p.ok,
-                    "completed" => p.fin,
+                    "seeding" => p.ic_seeding(),
+                    "completed" => p.ic_completed(),
                     "error" => p.err,
                     _ => p.ink_faint,
                 };
