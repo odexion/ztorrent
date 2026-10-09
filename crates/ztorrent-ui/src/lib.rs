@@ -202,6 +202,7 @@ pub fn run(options: RunOptions) {
 
     app.run(move |cx: &mut App| {
         set_app_identity(cx);
+        platform::claim_handlers();
         // GPUI panics when no font resolves, and a minimal Linux install can
         // have none. Noto Sans is on its fallback list, so carrying it means
         // there is always one; a system that has fonts keeps using its own.

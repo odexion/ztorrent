@@ -440,6 +440,9 @@ impl Updater {
             let dest = self.staged_dir.join(app.file_name());
             // ditto keeps a bundle's symlinks, permissions and extended attributes.
             run("ditto", &[&app.path().to_string_lossy(), &dest.to_string_lossy()])?;
+            // Launch Services may have registered the copy on the image; once
+            // ejected, a newer build no one can open would still own .torrent.
+            let _ = run(LSREGISTER, &["-u", &app.path().to_string_lossy()]);
             Ok(dest)
         })();
         // Detached before anything else, success or not: an image left attached is
@@ -592,6 +595,9 @@ fn detach_image(dmg: &Path) {
     }
 }
 
+/// Launch Services' registration tool, at the same path on every macOS since 11.
+const LSREGISTER: &str = "/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister";
+
 fn q(p: &Path) -> String {
     format!("'{}'", p.to_string_lossy().replace('\'', "'\\''"))
 }
@@ -606,6 +612,12 @@ if mv {t} "$backup" 2>/dev/null; then
   if ditto {p} {t}; then
     /usr/bin/xattr -dr com.apple.quarantine {t} 2>/dev/null || true
     rm -rf "$backup"
+    # The staged copy is about to be deleted; Launch Services must not keep
+    # serving .torrent's icon from it. The installed copy is the one to know.
+    if [ -x {ls} ]; then
+      {ls} -u {p} 2>/dev/null || true
+      {ls} -f {t} 2>/dev/null || true
+    fi
   else
     # Put back exactly what was there. A failed update must not cost anyone
     # the version they already had.
@@ -616,7 +628,8 @@ fi
 open {t}
 "#,
             t = q(target),
-            p = q(payload)
+            p = q(payload),
+            ls = LSREGISTER
         )
     } else {
         format!(
@@ -717,6 +730,8 @@ mod tests {
         assert!(s.contains("case \"$pid\" in ''|0|*[!0-9]*) pid=\"\" ;; esac"));
         assert!(s.contains("/usr/bin/xattr -dr com.apple.quarantine '/Applications/ztorrent.app'"));
         assert!(s.contains("mv \"$backup\" '/Applications/ztorrent.app'"), "rolls back a failed copy");
+        assert!(s.contains("lsregister -u '/tmp/it'\\''s/new.app'"), "forgets the staged copy");
+        assert!(s.contains("lsregister -f '/Applications/ztorrent.app'"), "registers the installed copy");
     }
 
     #[test]

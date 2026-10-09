@@ -506,6 +506,15 @@ install_mac() {
   fi
   [ -n "$backup" ] && rm -rf "$backup"
 
+  # Launch Services may have registered the copy on the disk image. Once it is
+  # ejected, that copy could still own .torrent files and leave them with the
+  # generic icon, so forget it and register the installed one instead.
+  LSREGISTER=/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister
+  if [ -x "$LSREGISTER" ]; then
+    "$LSREGISTER" -u "$src" 2>/dev/null || true
+    "$LSREGISTER" -f "$app" 2>/dev/null || true
+  fi
+
   # curl does not set the quarantine flag, but a re-run over a previously
   # quarantined copy might inherit one, and these builds are unsigned.
   # By full path: an xattr earlier on PATH need not be Apple's -- the PyPI

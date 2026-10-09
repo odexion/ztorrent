@@ -24,5 +24,6 @@ gpui-component = { workspace = true, features = ["test-support"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2 = "0.6"
-objc2-foundation = { version = "0.3", features = ["NSString"] }
-objc2-app-kit = { version = "0.3", features = ["NSApplication", "NSDockTile", "NSResponder", "NSAppearance"] }
+objc2-foundation = { version = "0.3", features = ["NSString", "NSURL", "NSBundle", "NSUserDefaults", "NSError"] }
+objc2-app-kit = { version = "0.3", features = ["NSApplication", "NSDockTile", "NSResponder", "NSAppearance", "NSWorkspace", "block2", "objc2-uniform-type-identifiers"] }
+objc2-uniform-type-identifiers = { version = "0.3", features = ["UTType"] }
