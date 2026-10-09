@@ -336,6 +336,8 @@ Status Session::status(std::uint64_t handle) const {
     s.total_wanted_done = st.total_wanted_done;
     s.all_time_download = st.all_time_download;
     s.all_time_upload = st.all_time_upload;
+    s.active_duration = lt::total_seconds(st.active_duration);
+    s.finished_duration = lt::total_seconds(st.finished_duration);
     s.download_rate = st.download_payload_rate;
     s.upload_rate = st.upload_payload_rate;
     s.num_peers = st.num_peers;

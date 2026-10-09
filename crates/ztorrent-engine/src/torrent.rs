@@ -34,6 +34,8 @@ pub struct Torrent {
     /// only what this run added is folded onto the record's bases.
     pub up_at_spawn: Option<i64>,
     pub down_at_spawn: Option<i64>,
+    pub active_at_spawn: Option<i64>,
+    pub finished_at_spawn: Option<i64>,
     pub status: Status,
 }
 
@@ -52,6 +54,8 @@ impl Torrent {
             rechecking: false,
             up_at_spawn: None,
             down_at_spawn: None,
+            active_at_spawn: None,
+            finished_at_spawn: None,
             status: Status::default(),
         }
     }
@@ -82,6 +86,22 @@ impl Torrent {
             _ => 0,
         };
         self.rec.downloaded_base + run
+    }
+
+    pub fn active_secs(&self) -> u64 {
+        let run = match (self.live(), self.active_at_spawn) {
+            (true, Some(start)) => (self.status.active_duration - start).max(0) as u64,
+            _ => 0,
+        };
+        self.rec.active_base + run
+    }
+
+    pub fn finished_secs(&self) -> u64 {
+        let run = match (self.live(), self.finished_at_spawn) {
+            (true, Some(start)) => (self.status.finished_duration - start).max(0) as u64,
+            _ => 0,
+        };
+        self.rec.finished_base + run
     }
 
     pub fn length(&self) -> u64 {

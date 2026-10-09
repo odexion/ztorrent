@@ -54,6 +54,7 @@ actions!(
         /// Opens Customize Label for the first label; for scripted checks.
         CustomizeFirstLabel,
         ShowGeneral,
+        ShowSummary,
         ShowTrackers,
         ShowPeers,
         ShowPieces,

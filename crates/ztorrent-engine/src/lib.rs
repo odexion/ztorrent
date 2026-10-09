@@ -294,6 +294,8 @@ impl Engine {
             if t.status.valid {
                 t.up_at_spawn.get_or_insert(t.status.all_time_upload);
                 t.down_at_spawn.get_or_insert(t.status.all_time_download);
+                t.active_at_spawn.get_or_insert(t.status.active_duration);
+                t.finished_at_spawn.get_or_insert(t.status.finished_duration);
             }
         }
     }
@@ -401,6 +403,8 @@ impl Engine {
                 let mut r = t.rec.clone();
                 r.uploaded_base = t.uploaded();
                 r.downloaded_base = t.downloaded();
+                r.active_base = t.active_secs();
+                r.finished_base = t.finished_secs();
                 r.state = t.state();
                 r
             })
@@ -520,6 +524,8 @@ impl Engine {
                 t.stopping = false;
                 t.up_at_spawn = None;
                 t.down_at_spawn = None;
+                t.active_at_spawn = None;
+                t.finished_at_spawn = None;
                 t.status = status;
                 t.rec.state = State::Checking;
                 if params.paused {
@@ -956,6 +962,8 @@ impl Engine {
             let t = &mut self.torrents[i];
             t.rec.uploaded_base = t.uploaded();
             t.rec.downloaded_base = t.downloaded();
+            t.rec.active_base = t.active_secs();
+            t.rec.finished_base = t.finished_secs();
             t.rec.progress = t.done();
             t.stopping = true;
             if !self.session.save_resume_data(h) {
@@ -982,6 +990,8 @@ impl Engine {
         t.status = lt::Status::default();
         t.up_at_spawn = None;
         t.down_at_spawn = None;
+        t.active_at_spawn = None;
+        t.finished_at_spawn = None;
         self.pump_queue();
     }
 

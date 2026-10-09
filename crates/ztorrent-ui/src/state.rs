@@ -13,6 +13,7 @@ pub const HISTORY_LEN: usize = 150;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Tab {
     General,
+    Summary,
     Trackers,
     Peers,
     Pieces,
@@ -22,11 +23,12 @@ pub enum Tab {
 }
 
 impl Tab {
-    pub const ALL: [Tab; 7] = [Tab::General, Tab::Trackers, Tab::Peers, Tab::Pieces, Tab::Files, Tab::Speed, Tab::Logger];
+    pub const ALL: [Tab; 8] = [Tab::General, Tab::Summary, Tab::Trackers, Tab::Peers, Tab::Pieces, Tab::Files, Tab::Speed, Tab::Logger];
 
     pub fn label(self) -> &'static str {
         match self {
             Tab::General => "General",
+            Tab::Summary => "Summary",
             Tab::Trackers => "Trackers",
             Tab::Peers => "Peers",
             Tab::Pieces => "Pieces",
@@ -39,6 +41,7 @@ impl Tab {
     pub fn icon(self) -> &'static str {
         match self {
             Tab::General => "info",
+            Tab::Summary => "flag",
             Tab::Trackers => "tracker",
             Tab::Peers => "peers",
             Tab::Pieces => "pieces",

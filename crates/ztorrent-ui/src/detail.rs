@@ -1,4 +1,4 @@
-//! The detail pane: General, Trackers, Peers, Pieces, Files, Speed, Logger.
+//! The detail pane: General, Summary, Trackers, Peers, Pieces, Files, Speed, Logger.
 
 use crate::actions::*;
 use crate::icons::icon;
@@ -51,6 +51,7 @@ impl Workspace {
             (Tab::Logger, _) => self.render_logger(&p).into_any_element(),
             (_, None) => empty(&p, "Select a torrent to see its details.").into_any_element(),
             (Tab::General, Some(r)) => render_general(&p, r, details.as_ref()).into_any_element(),
+            (Tab::Summary, Some(r)) => render_summary(&p, r).into_any_element(),
             (tab, Some(_)) => match details {
                 None => div().into_any_element(),
                 Some(d) => match tab {
@@ -278,27 +279,30 @@ fn table_head(p: &Palette, cols: &[(&'static str, Pixels, bool)]) -> Div {
     head
 }
 
+/// A titled column of "Key:  value" lines, as General and Summary lay them out.
+fn info_grid(p: &Palette, title: &'static str, items: Vec<(&'static str, String, bool)>) -> Div {
+    let mut g = div().flex().flex_col().gap(px(7.)).min_w_0();
+    for (k, v, mono) in items {
+        g = g.child(
+            div()
+                .flex()
+                .gap(px(12.))
+                .child(div().w(px(128.)).flex_none().text_color(p.ink_dim).child(k))
+                .child(div().flex_1().min_w_0().truncate().when(mono, |d| d.font_family(MONO).text_size(px(12.))).child(v)),
+        );
+    }
+    div()
+        .flex()
+        .flex_col()
+        .flex_1()
+        .min_w_0()
+        .child(div().mb(px(10.)).text_size(px(11.)).font_weight(FontWeight::SEMIBOLD).text_color(p.ink_faint).child(title.to_uppercase()))
+        .child(g)
+}
+
 fn render_general(p: &Palette, r: &Row, d: Option<&Details>) -> impl IntoElement {
     let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis() as i64).unwrap_or(0);
-    let grid = |title: &'static str, items: Vec<(&'static str, String, bool)>| {
-        let mut g = div().flex().flex_col().gap(px(7.)).min_w_0();
-        for (k, v, mono) in items {
-            g = g.child(
-                div()
-                    .flex()
-                    .gap(px(12.))
-                    .child(div().w(px(128.)).flex_none().text_color(p.ink_dim).child(k))
-                    .child(div().flex_1().min_w_0().truncate().when(mono, |d| d.font_family(MONO).text_size(px(12.))).child(v)),
-            );
-        }
-        div()
-            .flex()
-            .flex_col()
-            .flex_1()
-            .min_w_0()
-            .child(div().mb(px(10.)).text_size(px(11.)).font_weight(FontWeight::SEMIBOLD).text_color(p.ink_faint).child(title.to_uppercase()))
-            .child(g)
-    };
+    let grid = |title, items| info_grid(p, title, items);
     let pieces = d.map(|d| format!("{} × {} (have {})", d.piece_count, fmt::bytes(d.piece_length as f64, false), d.have)).unwrap_or("—".into());
     let total = if r.wanted_size != r.size { format!("{} ({} selected)", fmt::bytes(r.size as f64, false), fmt::bytes(r.wanted_size as f64, false)) } else { fmt::bytes(r.size as f64, false) };
     let transfer = vec![
@@ -345,6 +349,40 @@ fn render_general(p: &Palette, r: &Row, d: Option<&Details>) -> impl IntoElement
                 .child(div().font_weight(FontWeight::MEDIUM).child(fmt::pct(r.done, 2))),
         )
         .child(div().flex().gap(px(40.)).child(grid("Transfer", transfer)).child(grid("Torrent", torrent)))
+}
+
+/// How the torrent's life went: how long each phase took and how fast it went
+/// on average. Times count only while the torrent was running, so a pause or a
+/// closed app does not drag the averages down.
+fn render_summary(p: &Palette, r: &Row) -> impl IntoElement {
+    let secs = |s: u64| dash(fmt::duration(s as i64 * 1000));
+    let downloading = r.active_secs.saturating_sub(r.finished_secs);
+    let avg = |bytes: u64, secs: u64| if secs > 0 { fmt::speed(bytes as f64 / secs as f64, false) } else { "—".into() };
+    let complete = r.completed_on > 0 && r.completed_on >= r.added_on;
+    let wasted = r.downloaded.saturating_sub(r.wanted_size);
+    let time = vec![
+        ("Added On:", fmt::datetime(r.added_on), false),
+        ("Completed On:", if complete { fmt::datetime(r.completed_on) } else { "—".into() }, false),
+        ("Took:", if complete { dash(fmt::duration(r.completed_on - r.added_on)) } else { "—".into() }, false),
+        ("Downloading:", secs(downloading), false),
+        ("Seeding:", secs(r.finished_secs), false),
+    ];
+    let transfer = vec![
+        ("Downloaded:", fmt::bytes(r.downloaded as f64, false), false),
+        ("Uploaded:", fmt::bytes(r.uploaded as f64, false), false),
+        ("Avg. Download:", avg(r.downloaded, downloading), false),
+        ("Avg. Upload:", avg(r.uploaded, r.active_secs), false),
+        ("Share Ratio:", fmt::ratio(r.ratio), false),
+        ("Wasted:", if r.done >= 1.0 && wasted > 0 { fmt::bytes(wasted as f64, false) } else { "—".into() }, false),
+    ];
+    div()
+        .id("summary")
+        .size_full()
+        .overflow_y_scroll()
+        .px(px(18.))
+        .py(px(16.))
+        .font_features(tabular())
+        .child(div().flex().gap(px(40.)).child(info_grid(p, "Time", time)).child(info_grid(p, "Transfer", transfer)))
 }
 
 fn render_trackers(p: &Palette, d: &Details) -> impl IntoElement {

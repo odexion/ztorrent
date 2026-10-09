@@ -672,6 +672,7 @@ impl Render for Workspace {
                 }
             }))
             .on_action(cx.listener(|this, _: &ShowGeneral, _, cx| this.show_tab(crate::state::Tab::General, cx)))
+            .on_action(cx.listener(|this, _: &ShowSummary, _, cx| this.show_tab(crate::state::Tab::Summary, cx)))
             .on_action(cx.listener(|this, _: &ShowTrackers, _, cx| this.show_tab(crate::state::Tab::Trackers, cx)))
             .on_action(cx.listener(|this, _: &ShowPeers, _, cx| this.show_tab(crate::state::Tab::Peers, cx)))
             .on_action(cx.listener(|this, _: &ShowPieces, _, cx| this.show_tab(crate::state::Tab::Pieces, cx)))

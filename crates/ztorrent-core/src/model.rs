@@ -101,6 +101,11 @@ pub struct TorrentRecord {
     pub uploaded_base: u64,
     #[serde(deserialize_with = "lenient::u64")]
     pub downloaded_base: u64,
+    /// Seconds spent running, and seconds of that spent finished, over every run.
+    #[serde(deserialize_with = "lenient::u64")]
+    pub active_base: u64,
+    #[serde(deserialize_with = "lenient::u64")]
+    pub finished_base: u64,
     #[serde(deserialize_with = "lenient::u64")]
     pub length: u64,
     /// Wanted file indices; null means every file.
@@ -251,6 +256,9 @@ pub struct Row {
     pub availability: f64,
     pub added_on: i64,
     pub completed_on: i64,
+    /// Seconds spent running, and seconds of that spent finished.
+    pub active_secs: u64,
+    pub finished_secs: u64,
     pub sequential: bool,
     pub magnet_uri: Option<String>,
 }

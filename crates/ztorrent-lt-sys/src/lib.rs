@@ -68,6 +68,9 @@ pub mod ffi {
         pub total_wanted_done: i64,
         pub all_time_download: i64,
         pub all_time_upload: i64,
+        /// Seconds not paused, and seconds of that spent finished.
+        pub active_duration: i64,
+        pub finished_duration: i64,
         pub download_rate: i32,
         pub upload_rate: i32,
         pub num_peers: i32,

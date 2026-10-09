@@ -101,6 +101,8 @@ impl Engine {
             },
             added_on: t.rec.added_on,
             completed_on: t.rec.completed_on,
+            active_secs: t.active_secs(),
+            finished_secs: t.finished_secs(),
             sequential: t.rec.sequential,
             magnet_uri: t.rec.magnet_uri.clone(),
         }
