@@ -9375,7 +9375,7 @@ checksum = "29666d0abbfad1e3dc4dcf6144730dd3a3ab225bbbdac83319345b1b44ccfc1b"
 
 [[package]]
 name = "ztorrent"
-version = "0.5.7"
+version = "0.6.0"
 dependencies = [
  "anyhow",
  "ctrlc",
@@ -9395,7 +9395,7 @@ dependencies = [
 
 [[package]]
 name = "ztorrent-core"
-version = "0.5.7"
+version = "0.6.0"
 dependencies = [
  "anyhow",
  "chrono",
@@ -9410,7 +9410,7 @@ dependencies = [
 
 [[package]]
 name = "ztorrent-engine"
-version = "0.5.7"
+version = "0.6.0"
 dependencies = [
  "anyhow",
  "base64 0.22.1",
@@ -9427,7 +9427,7 @@ dependencies = [
 
 [[package]]
 name = "ztorrent-lt-sys"
-version = "0.5.7"
+version = "0.6.0"
 dependencies = [
  "cc",
  "cxx",
@@ -9438,7 +9438,7 @@ dependencies = [
 
 [[package]]
 name = "ztorrent-secrets"
-version = "0.5.7"
+version = "0.6.0"
 dependencies = [
  "aes",
  "aes-gcm",
@@ -9456,7 +9456,7 @@ dependencies = [
 
 [[package]]
 name = "ztorrent-ui"
-version = "0.5.7"
+version = "0.6.0"
 dependencies = [
  "anyhow",
  "flume 0.11.1",
@@ -9477,7 +9477,7 @@ dependencies = [
 
 [[package]]
 name = "ztorrent-updater"
-version = "0.5.7"
+version = "0.6.0"
 dependencies = [
  "anyhow",
  "flume 0.11.1",
