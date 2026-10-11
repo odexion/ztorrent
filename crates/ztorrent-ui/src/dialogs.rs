@@ -11,7 +11,7 @@ use gpui::prelude::*;
 use gpui::*;
 use gpui_component::button::{Button, ButtonVariants};
 use gpui_component::checkbox::Checkbox;
-use gpui_component::input::{Input, InputState, Textarea, TextareaState};
+use gpui_component::input::{Input, InputEvent, InputState, Textarea, TextareaState};
 use gpui_component::native_menu::NativeMenu;
 use gpui_component::{Disableable, Sizable, WindowExt};
 use std::collections::BTreeMap;
@@ -51,11 +51,22 @@ enum Confirm {
 }
 
 fn open<V: Render>(window: &mut Window, cx: &mut App, width: f32, view: Entity<V>, confirm: Confirm) {
+    open_with(window, cx, width, view, confirm, true);
+}
+
+/// A sheet a click beside it does not close. For one the user works in for a
+/// while and leaves to fetch something from another app: the click that brings
+/// the window back lands beside the sheet, and must not throw away their work.
+fn open_sticky<V: Render>(window: &mut Window, cx: &mut App, width: f32, view: Entity<V>, confirm: Confirm) {
+    open_with(window, cx, width, view, confirm, false);
+}
+
+fn open_with<V: Render>(window: &mut Window, cx: &mut App, width: f32, view: Entity<V>, confirm: Confirm, backdrop_closes: bool) {
     crate::debug(format!("open dialog ({width}px)"));
     let confirm = Rc::new(confirm);
     window.open_dialog(cx, move |dialog, _, _| {
         let confirm = confirm.clone();
-        dialog.w(px(width)).close_button(false).child(view.clone()).on_ok(move |_, window, cx| match confirm.as_ref() {
+        dialog.w(px(width)).close_button(false).overlay_closable(backdrop_closes).child(view.clone()).on_ok(move |_, window, cx| match confirm.as_ref() {
             // Closed the way a sheet closes itself, which is the path that gives
             // focus back to the window -- closing from inside the key handler left
             // nothing focused, and every menu command after it went nowhere.
@@ -598,6 +609,923 @@ impl Render for UrlSheet {
                 footer(&p, None)
                     .child(Button::new("cancel").label("Cancel").on_click(|_, window, cx| window.close_dialog(cx)))
                     .child(div().debug_selector(|| "url-ok".into()).child(Button::new("ok").label("Continue").primary().on_click(cx.listener(|this, _, window, cx| this.confirm(window, cx))))),
+            )
+    }
+}
+
+// --------------------------------------------------------------- Search
+
+#[derive(Clone, Copy, PartialEq)]
+enum SortBy {
+    Name,
+    Source,
+    Size,
+    Seeds,
+}
+
+const RESULT_COUNTS: [u64; 4] = [20, 40, 100, 200];
+
+/// The fields under Advanced in the source editor, by their key in a source
+/// definition, with what each one names.
+const MAPPING_FIELDS: [(&str, &str); 9] = [
+    ("results", "Results list:"),
+    ("items", "Versions list:"),
+    ("title", "Title:"),
+    ("hash", "Info hash:"),
+    ("magnet", "Magnet link:"),
+    ("link", "Torrent file link:"),
+    ("size", "Size:"),
+    ("seeders", "Seeders:"),
+    ("leechers", "Leechers:"),
+];
+
+const SOURCE_EXAMPLE: &str = "https://example.org/api/search?q={query}";
+const RESPONSIBILITY: &str = "ztorrent comes with no third-party torrent sites. You choose the sources you add, and you are responsible for them and for what you download.";
+
+/// Adding or editing one of the user's own sources.
+struct SourceEditor {
+    /// The source being edited, by its place in the list; None when adding.
+    index: Option<usize>,
+    name: Entity<InputState>,
+    url: Entity<InputState>,
+    test_query: Entity<InputState>,
+    mapping: BTreeMap<&'static str, Entity<InputState>>,
+    trackers: Entity<InputState>,
+    mirrors: Entity<InputState>,
+    advanced: bool,
+    /// The step-by-step guide is unfolded.
+    guide: bool,
+    testing: bool,
+    preview: Vec<SearchResult>,
+    error: Option<String>,
+    /// The question for an AI assistant was just copied.
+    asked: bool,
+    /// Where an AI assistant's answer, or a shared definition, is pasted.
+    answer: Entity<TextareaState>,
+    /// What came of the last paste there: filled in, or why not.
+    filled: Option<Result<String, String>>,
+    generation: u32,
+    _answer_changed: Subscription,
+    /// Return in the address or test-search field runs Test.
+    _enter: Vec<Subscription>,
+}
+
+impl SourceEditor {
+    /// Puts a definition's every field into the form.
+    fn fill(&mut self, shared: &CustomSource, window: &mut Window, cx: &mut App) {
+        self.name.update(cx, |s, cx| s.set_value(shared.name.clone(), window, cx));
+        self.url.update(cx, |s, cx| s.set_value(shared.url.clone(), window, cx));
+        self.trackers.update(cx, |s, cx| s.set_value(shared.trackers.join(", "), window, cx));
+        self.mirrors.update(cx, |s, cx| s.set_value(shared.mirrors.join(", "), window, cx));
+        let values = [&shared.results, &shared.items, &shared.title, &shared.hash, &shared.magnet, &shared.link, &shared.size, &shared.seeders, &shared.leechers];
+        for ((key, _), value) in MAPPING_FIELDS.iter().zip(values) {
+            self.mapping[key].update(cx, |s, cx| s.set_value(value.clone(), window, cx));
+        }
+        self.advanced |= values.iter().any(|v| !v.is_empty()) || !shared.trackers.is_empty() || !shared.mirrors.is_empty();
+        self.preview.clear();
+        self.error = None;
+    }
+}
+
+pub struct SearchSheet {
+    query: Entity<InputState>,
+    indexer_url: Entity<InputState>,
+    indexer_key: Entity<InputState>,
+    /// The search settings as this sheet last saw or set them.
+    settings: Settings,
+    show_settings: bool,
+    editor: Option<SourceEditor>,
+    /// A passing word under the source list, such as "Copied".
+    flash: Option<String>,
+    results: Vec<SearchResult>,
+    notes: Vec<String>,
+    sort: SortBy,
+    descending: bool,
+    busy: bool,
+    searched: bool,
+    /// Bumped by every search, so a slow answer to an earlier one is ignored.
+    generation: u32,
+    focus: FocusHandle,
+    _subscriptions: Vec<Subscription>,
+}
+
+pub fn open_search<V: 'static>(window: &mut Window, cx: &mut Context<V>) {
+    let settings = cx.global::<Library>().settings.clone();
+    let query = text_input(window, cx, "", "Search for torrents");
+    let indexer_url = text_input(window, cx, &settings.search_indexer_url, "http://127.0.0.1:9117");
+    let indexer_key = cx.new(|cx| {
+        let mut s = InputState::new(window, cx).masked(true);
+        s.set_value(settings.search_indexer_key.clone(), window, cx);
+        s
+    });
+    let sheet = cx.new(|cx| {
+        // The address and key are saved when they lose focus, not per keystroke.
+        let save_on_blur = |cx: &mut Context<SearchSheet>, input: &Entity<InputState>| {
+            cx.subscribe(input, |this: &mut SearchSheet, _, ev: &InputEvent, cx| {
+                if matches!(ev, InputEvent::Blur) {
+                    this.save_indexer_fields(cx);
+                }
+            })
+        };
+        let mut subs = vec![save_on_blur(cx, &indexer_url), save_on_blur(cx, &indexer_key)];
+        // Return in the search box searches. The input takes the key itself, so
+        // the dialog's own Enter handling never sees it.
+        subs.push(cx.subscribe_in(&query, window, |this: &mut SearchSheet, _, ev: &InputEvent, window, cx| {
+            if matches!(ev, InputEvent::PressEnter { .. }) {
+                this.run(window, cx);
+            }
+        }));
+        SearchSheet {
+            query: query.clone(),
+            indexer_url,
+            indexer_key,
+            settings,
+            show_settings: false,
+            editor: None,
+            flash: None,
+            results: Vec::new(),
+            notes: Vec::new(),
+            sort: SortBy::Seeds,
+            descending: true,
+            busy: false,
+            searched: false,
+            generation: 0,
+            focus: cx.focus_handle(),
+            _subscriptions: subs,
+        }
+    });
+    let target = sheet.clone();
+    // Wide enough for a result's name, size and seeds side by side; long
+    // names wrap rather than widen the sheet.
+    let width = (f32::from(window.viewport_size().width) - 80.).clamp(520., 720.);
+    open_sticky(window, cx, width, sheet, Confirm::With(Rc::new(move |window, cx| target.update(cx, |s, cx| s.confirm(window, cx)))));
+    query.update(cx, |s, cx| s.focus(window, cx));
+}
+
+impl SearchSheet {
+    /// Saves one search setting at once: there is no OK button to wait for.
+    fn set(&mut self, key: &str, value: impl Into<serde_json::Value>, cx: &mut Context<Self>) {
+        let change = patch(key, value);
+        self.settings = self.settings.patched(&change);
+        send(cx, Command::SetSettings(change));
+        cx.notify();
+    }
+
+    fn set_custom(&mut self, list: Vec<CustomSource>, cx: &mut Context<Self>) {
+        self.set("searchCustomSources", serde_json::to_value(list).unwrap_or_default(), cx);
+    }
+
+    fn save_indexer_fields(&mut self, cx: &mut Context<Self>) {
+        let url = read(&self.indexer_url, cx).trim().to_string();
+        let key = read(&self.indexer_key, cx).trim().to_string();
+        if url != self.settings.search_indexer_url {
+            self.set("searchIndexerUrl", url, cx);
+        }
+        if key != self.settings.search_indexer_key {
+            self.set("searchIndexerKey", key, cx);
+        }
+    }
+
+    /// Enter: tests the source being edited, or searches.
+    fn confirm(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.editor.is_some() {
+            self.test_source(window, cx);
+        } else {
+            self.run(window, cx);
+        }
+    }
+
+    fn run(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.save_indexer_fields(cx);
+        let query = read(&self.query, cx).trim().to_string();
+        if query.is_empty() || self.busy {
+            return;
+        }
+        let options = self.settings.search_options();
+        if options.sources.is_empty() && options.custom.is_empty() {
+            self.notes = vec!["Every source is switched off. Turn one on, or add your own, in the search settings.".into()];
+            self.show_settings = true;
+            return cx.notify();
+        }
+        self.generation += 1;
+        let generation = self.generation;
+        self.busy = true;
+        self.searched = true;
+        self.results.clear();
+        self.notes.clear();
+        cx.notify();
+        let rx = ask(cx, |reply| Command::Search { query, options, reply });
+        cx.spawn_in(window, async move |this, cx| {
+            let outcome = rx.await.unwrap_or_else(|_| SearchOutcome { results: Vec::new(), failures: vec!["the engine is not running".into()] });
+            let _ = this.update(cx, |this, cx| {
+                if this.generation != generation {
+                    return;
+                }
+                this.busy = false;
+                this.results = outcome.results;
+                this.notes = outcome.failures;
+                this.sort_results();
+                cx.notify();
+            });
+        })
+        .detach();
+    }
+
+    fn sort_by(&mut self, by: SortBy, cx: &mut Context<Self>) {
+        if self.sort == by {
+            self.descending = !self.descending;
+        } else {
+            self.sort = by;
+            // Most seeded and largest first; names and sources A to Z.
+            self.descending = matches!(by, SortBy::Seeds | SortBy::Size);
+        }
+        self.sort_results();
+        cx.notify();
+    }
+
+    fn sort_results(&mut self) {
+        let by = self.sort;
+        // Stable, so hits that tie keep the order their source ranked them in.
+        self.results.sort_by(|a, b| {
+            let o = match by {
+                SortBy::Name => fmt::compare_text(&a.title, &b.title),
+                SortBy::Source => fmt::compare_text(&a.source, &b.source),
+                SortBy::Size => a.size.cmp(&b.size),
+                SortBy::Seeds => a.seeders.cmp(&b.seeders),
+            };
+            if self.descending { o.reverse() } else { o }
+        });
+    }
+
+    // ------------------------------------------------------ source editor
+
+    fn open_editor(&mut self, index: Option<usize>, window: &mut Window, cx: &mut Context<Self>) {
+        let source = index.and_then(|i| self.settings.search_custom_sources.get(i).cloned()).unwrap_or_default();
+        let field = |key: &str| match key {
+            "results" => source.results.clone(),
+            "items" => source.items.clone(),
+            "title" => source.title.clone(),
+            "hash" => source.hash.clone(),
+            "magnet" => source.magnet.clone(),
+            "link" => source.link.clone(),
+            "size" => source.size.clone(),
+            "seeders" => source.seeders.clone(),
+            "leechers" => source.leechers.clone(),
+            _ => String::new(),
+        };
+        let mapping = MAPPING_FIELDS.iter().map(|(key, _)| (*key, text_input(window, cx, &field(key), "found automatically"))).collect::<BTreeMap<_, _>>();
+        let advanced = mapping.keys().any(|k| !field(k).is_empty()) || !source.trackers.is_empty() || !source.mirrors.is_empty();
+        let typed = read(&self.query, cx).trim().to_string();
+        let answer = cx.new(|cx| TextareaState::new(window, cx).rows(5).placeholder("Paste the assistant's whole answer here, or a definition someone shared"));
+        let editor = SourceEditor {
+            index,
+            name: text_input(window, cx, &source.name, "e.g. My favourite site"),
+            url: text_input(window, cx, &source.url, SOURCE_EXAMPLE),
+            // A word every catalogue has titles with, unless a search is typed.
+            test_query: text_input(window, cx, if typed.is_empty() { "the" } else { &typed }, ""),
+            mapping,
+            trackers: text_input(window, cx, &source.trackers.join(", "), "udp://tracker.example.org:1337/announce, …"),
+            mirrors: text_input(window, cx, &source.mirrors.join(", "), "https://mirror.example.org/api?q={query}, …"),
+            advanced,
+            guide: false,
+            testing: false,
+            preview: Vec::new(),
+            error: None,
+            asked: false,
+            filled: None,
+            generation: 0,
+            _answer_changed: cx.subscribe_in(&answer, window, |this, state, ev: &InputEvent, window, cx| {
+                if matches!(ev, InputEvent::Change) {
+                    this.answer_pasted(state.read(cx).value().to_string(), window, cx);
+                }
+            }),
+            answer,
+            _enter: Vec::new(),
+        };
+        let mut editor = editor;
+        for input in [editor.url.clone(), editor.test_query.clone()] {
+            editor._enter.push(cx.subscribe_in(&input, window, |this: &mut SearchSheet, _, ev: &InputEvent, window, cx| {
+                if matches!(ev, InputEvent::PressEnter { .. }) {
+                    this.test_source(window, cx);
+                }
+            }));
+        }
+        let focus = if index.is_some() { editor.url.clone() } else { editor.name.clone() };
+        self.editor = Some(editor);
+        self.show_settings = true;
+        self.flash = None;
+        focus.update(cx, |s, cx| s.focus(window, cx));
+        cx.notify();
+    }
+
+    /// The source as the editor's fields describe it. A definition pasted into
+    /// the address field fills in every field first.
+    fn editor_source(&mut self, window: &mut Window, cx: &mut Context<Self>) -> Result<CustomSource, String> {
+        let Some(ed) = &mut self.editor else { return Err(String::new()) };
+        let pasted = read(&ed.url, cx).trim().to_string();
+        // A definition pasted into Address instead of the answer box still works.
+        if CustomSource::looks_shared(&pasted) {
+            let shared = CustomSource::from_shared(&pasted)?;
+            ed.fill(&shared, window, cx);
+        }
+        let m = |key: &str| read(&ed.mapping[key], cx).trim().to_string();
+        let enabled = ed.index.and_then(|i| self.settings.search_custom_sources.get(i)).is_none_or(|s| s.enabled);
+        let source = CustomSource {
+            name: read(&ed.name, cx).trim().to_string(),
+            url: read(&ed.url, cx).trim().to_string(),
+            enabled,
+            results: m("results"),
+            items: m("items"),
+            title: m("title"),
+            hash: m("hash"),
+            magnet: m("magnet"),
+            link: m("link"),
+            size: m("size"),
+            seeders: m("seeders"),
+            leechers: m("leechers"),
+            trackers: read(&ed.trackers, cx).split([',', '\n', ' ']).map(str::trim).filter(|t| !t.is_empty()).map(String::from).collect(),
+            mirrors: read(&ed.mirrors, cx).split([',', '\n', ' ']).map(str::trim).filter(|t| !t.is_empty()).map(String::from).collect(),
+        };
+        source.check()?;
+        if SEARCH_SOURCES.iter().any(|(_, n)| n.eq_ignore_ascii_case(&source.name)) {
+            return Err("That is the name of a built-in source: choose another.".into());
+        }
+        Ok(source)
+    }
+
+    /// Fills the form from an answer as soon as it is pasted, so the next step
+    /// is only Test.
+    fn answer_pasted(&mut self, text: String, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(ed) = &mut self.editor else { return };
+        let text = text.trim();
+        ed.filled = if text.is_empty() {
+            None
+        } else {
+            match CustomSource::from_shared(text) {
+                Ok(shared) => {
+                    ed.fill(&shared, window, cx);
+                    let note = CustomSource::shared_note(text).map(|n| format!(" The assistant notes: {n}")).unwrap_or_default();
+                    Some(Ok(format!("Filled in \u{201c}{}\u{201d} from the answer. Now click Test to check that it finds results.{note}", shared.name)))
+                }
+                // Still being typed or pasted: say nothing until it could be whole.
+                Err(_) if !text.contains('}') => None,
+                Err(err) => Some(Err(err)),
+            }
+        };
+        cx.notify();
+    }
+
+    fn test_source(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let source = self.editor_source(window, cx);
+        let Some(ed) = &mut self.editor else { return };
+        ed.preview.clear();
+        let source = match source {
+            Ok(s) => s,
+            Err(err) => {
+                ed.error = Some(err);
+                return cx.notify();
+            }
+        };
+        let query = read(&ed.test_query, cx).trim().to_string();
+        let query = if query.is_empty() { "the".to_string() } else { query };
+        ed.generation += 1;
+        let generation = ed.generation;
+        ed.testing = true;
+        ed.error = None;
+        cx.notify();
+        let rx = ask(cx, |reply| Command::TestSource { source, query, reply });
+        cx.spawn_in(window, async move |this, cx| {
+            let result = rx.await.unwrap_or_else(|_| Err("the engine is not running".into()));
+            let _ = this.update(cx, |this, cx| {
+                let Some(ed) = &mut this.editor else { return };
+                if ed.generation != generation {
+                    return;
+                }
+                ed.testing = false;
+                match result {
+                    Ok(hits) => ed.preview = hits,
+                    Err(err) => ed.error = Some(err),
+                }
+                cx.notify();
+            });
+        })
+        .detach();
+    }
+
+    fn save_source(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let source = match self.editor_source(window, cx) {
+            Ok(s) => s,
+            Err(err) => {
+                if let Some(ed) = &mut self.editor {
+                    ed.error = Some(err);
+                }
+                return cx.notify();
+            }
+        };
+        let mut list = self.settings.search_custom_sources.clone();
+        let name = source.name.clone();
+        let editing = self.editor.as_ref().and_then(|e| e.index).filter(|i| *i < list.len());
+        let namesake = self.namesake(&name);
+        match (editing, namesake) {
+            // Renamed onto another source: two of one name could not be told apart.
+            (Some(i), Some(other)) if other != i => {
+                if let Some(ed) = &mut self.editor {
+                    ed.error = Some(format!("There is already a source called \u{201c}{name}\u{201d}. Choose another name, or remove that one first."));
+                }
+                return cx.notify();
+            }
+            (Some(i), _) => list[i] = source,
+            // Adding one under a name already taken replaces it: the usual reason
+            // is a fresh definition for a source that stopped working.
+            (None, Some(other)) => list[other] = CustomSource { enabled: list[other].enabled, ..source },
+            (None, None) => list.push(source),
+        }
+        self.set_custom(list, cx);
+        self.editor = None;
+        self.flash = Some(format!("Saved \u{201c}{name}\u{201d}. It is searched along with the others."));
+        cx.notify();
+    }
+
+    /// The user's source of this name, if there is one.
+    fn namesake(&self, name: &str) -> Option<usize> {
+        let name = name.trim();
+        self.settings.search_custom_sources.iter().position(|s| !name.is_empty() && s.name.eq_ignore_ascii_case(name))
+    }
+
+    fn render_editor(&self, ed: &SourceEditor, p: &Palette, cx: &mut Context<Self>) -> Div {
+        let step = |n: &str, text: &str| {
+            div()
+                .flex()
+                .gap(px(8.))
+                .mb(px(6.))
+                .child(div().flex_none().w(px(18.)).h(px(18.)).rounded_full().bg(p.accent_soft).text_color(p.accent).text_size(px(11.)).flex().items_center().justify_center().child(n.to_string()))
+                .child(div().flex_1().min_w_0().text_color(p.ink_dim).child(text.to_string()))
+        };
+        let guide = div()
+            .mb(px(14.))
+            .p(px(12.))
+            .rounded(RADIUS)
+            .bg(p.bg)
+            .border_1()
+            .border_color(p.line)
+            .child(step("1", "Find the site's search API: an address that answers a search with JSON, not a web page. Sites usually describe it on an \u{201c}API\u{201d} page."))
+            .child(step("2", "Copy the address of a search and put {query} where your search words are, e.g."))
+            .child(div().ml(px(26.)).mb(px(8.)).min_w_0().font_family(MONO).text_size(px(12.)).text_color(p.ink).child(SOURCE_EXAMPLE))
+            .child(step("3", "Click Test. ztorrent finds the results and their fields by itself. If the preview looks right, click Save."))
+            .child(div().ml(px(26.)).text_size(px(12.)).text_color(p.ink_faint).child("Got a definition someone shared? Paste it into the answer box below: it fills in everything."));
+        let ask_ai = div()
+            .mb(px(14.))
+            .p(px(12.))
+            .rounded(RADIUS)
+            .bg(p.accent_soft)
+            .child(div().mb(px(4.)).font_weight(FontWeight::SEMIBOLD).child("Don't know the address? Ask an AI assistant."))
+            .child(div().mb(px(8.)).min_w_0().text_color(p.ink_dim).child("Copy this question, paste it into an AI assistant and type the site's name right after it. The assistant replies with a short piece of JSON: paste it into the box here, and Name and Address fill themselves in."))
+            .child(
+                div()
+                    .flex()
+                    .items_center()
+                    .gap(px(10.))
+                    .child(Button::new("ask-ai").label("Copy question for an AI").small().on_click(cx.listener(|this, _, _, cx| {
+                        let Some(ed) = &mut this.editor else { return };
+                        let prompt = CustomSource::assistant_prompt();
+                        cx.write_to_clipboard(ClipboardItem::new_string(prompt));
+                        ed.asked = true;
+                        cx.notify();
+                    })))
+                    .children(ed.asked.then(|| div().flex_1().min_w_0().text_size(px(12.)).text_color(p.ok).child("Copied. Now paste it into an AI assistant and type the site's name at the end."))),
+            )
+            .child(div().mt(px(10.)).font_family(MONO).text_size(px(12.)).child(Textarea::new(&ed.answer).h(px(110.))))
+            .children(ed.filled.clone().map(|f| match f {
+                Ok(msg) => div().mt(px(6.)).min_w_0().text_size(px(12.)).text_color(p.ok).child(msg),
+                Err(err) => div().mt(px(6.)).min_w_0().text_size(px(12.)).text_color(p.err).child(err),
+            }));
+        let mut form = div()
+            .child(legend(p, if ed.index.is_some() { "Edit source" } else { "Add a source" }))
+            .child(frow(p, "Name:", Input::new(&ed.name)))
+            .children(self.namesake(&read(&ed.name, cx)).filter(|i| Some(*i) != ed.index).map(|_| {
+                let note = if ed.index.is_some() { "Another source already has this name." } else { "You already have a source with this name: saving replaces it." };
+                hint(p, note).text_color(p.warn)
+            }))
+            .child(frow(p, "Address:", Input::new(&ed.url)))
+            .child(frow(p, "Test search:", div().flex().gap(px(8.)).child(div().flex_1().child(Input::new(&ed.test_query))).child(Button::new("test-source").label(if ed.testing { "Testing…" } else { "Test" }).small().disabled(ed.testing).on_click(cx.listener(|this, _, window, cx| this.test_source(window, cx))))));
+        if let Some(err) = &ed.error {
+            form = form.child(div().mb(px(10.)).text_color(p.err).child(err.clone()));
+        }
+        if !ed.preview.is_empty() {
+            let mut rows = div().mb(px(10.)).p(px(8.)).rounded(RADIUS).border_1().border_color(p.line).bg(p.bg);
+            rows = rows.child(
+                div()
+                    .flex()
+                    .items_center()
+                    .gap(px(10.))
+                    .mb(px(6.))
+                    .child(div().flex_1().min_w_0().text_size(px(12.)).text_color(p.ok).child(format!("It works: {} results. The first few:", ed.preview.len())))
+                    .child(div().debug_selector(|| "save-tested".into()).child(Button::new("save-tested").label("Save this source").small().primary().on_click(cx.listener(|this, _, window, cx| this.save_source(window, cx))))),
+            );
+            for hit in ed.preview.iter().take(5) {
+                let seeds = hit.seeders.map(|n| format!("{n} seeds")).unwrap_or_default();
+                rows = rows.child(
+                    div()
+                        .flex()
+                        .gap(px(10.))
+                        .text_size(px(12.))
+                        .mb(px(3.))
+                        .child(div().flex_1().min_w_0().line_clamp(2).child(hit.title.clone()))
+                        .child(div().flex_none().text_color(p.ink_faint).font_features(tabular()).child(format!("{} {seeds}", fmt::bytes(hit.size as f64, true)))),
+                );
+            }
+            form = form.child(rows);
+        }
+        form = form.child(ask_ai);
+        let guide_toggle = div()
+            .id("guide")
+            .mb(px(10.))
+            .text_color(p.accent)
+            .cursor_pointer()
+            .child(if ed.guide { "▾ How do I find a site's search API?" } else { "▸ How do I find a site's search API?" })
+            .on_click(cx.listener(|this, _, _, cx| {
+                if let Some(ed) = &mut this.editor {
+                    ed.guide = !ed.guide;
+                }
+                cx.notify();
+            }));
+        form = form.child(guide_toggle);
+        if ed.guide {
+            form = form.child(guide);
+        }
+        let toggle = div()
+            .id("advanced")
+            .mb(px(10.))
+            .text_color(p.accent)
+            .cursor_pointer()
+            .child(if ed.advanced { "▾ Advanced: which fields to read" } else { "▸ Advanced: which fields to read" })
+            .on_click(cx.listener(|this, _, _, cx| {
+                if let Some(ed) = &mut this.editor {
+                    ed.advanced = !ed.advanced;
+                }
+                cx.notify();
+            }));
+        form = form.child(toggle);
+        if ed.advanced {
+            form = form.child(hint(p, "Only if Test finds nothing or the wrong thing. Name a field as a dotted path, e.g. data.results or torrents.").ml(px(0.)).mt(px(0.)));
+            for (key, label) in MAPPING_FIELDS {
+                form = form.child(frow(p, label, Input::new(&ed.mapping[key])));
+            }
+            form = form.child(frow(p, "Trackers for hashes:", Input::new(&ed.trackers)));
+            form = form.child(frow(p, "Backup addresses:", Input::new(&ed.mirrors)));
+        }
+        form.child(
+            div()
+                .flex()
+                .items_center()
+                .justify_end()
+                .gap(px(8.))
+                .child(Button::new("cancel-source").label("Cancel").small().on_click(cx.listener(|this, _, _, cx| {
+                    this.editor = None;
+                    cx.notify();
+                })))
+                .child(Button::new("save-source").label("Save").small().primary().on_click(cx.listener(|this, _, window, cx| this.save_source(window, cx)))),
+        )
+    }
+
+    fn render_settings(&self, p: &Palette, cx: &mut Context<Self>) -> Div {
+        let panel = div().mt(px(12.)).p(px(14.)).border_1().border_color(p.line).rounded(RADIUS).bg(p.chrome);
+        if let Some(ed) = &self.editor {
+            return panel.child(self.render_editor(ed, p, cx));
+        }
+        let s = &self.settings;
+        let mut built_in = div().flex().flex_col().gap(px(10.)).mb(px(20.));
+        for (id, name) in SEARCH_SOURCES {
+            let on = s.search_source_enabled(id);
+            let about = match id {
+                "archive" => "Free, legal films, music, books and software.",
+                _ => "Only if you run Jackett or Prowlarr: free programs that search every site you add to them. Leave this off otherwise.",
+            };
+            built_in = built_in.child(
+                div()
+                    .child(Checkbox::new(SharedString::from(format!("src-{id}"))).label(name).checked(on).on_click(cx.listener(move |this, on: &bool, _, cx| {
+                        let list = this.settings.search_sources_with(id, *on);
+                        this.set("searchDisabledSources", list, cx);
+                    })))
+                    .child(div().ml(px(26.)).text_size(px(12.)).text_color(p.ink_faint).child(about)),
+            );
+        }
+        let mut yours = div().mb(px(8.)).rounded(RADIUS).border_1().border_color(p.line).bg(p.bg);
+        if s.search_custom_sources.is_empty() {
+            yours = yours.child(div().px(px(10.)).py(px(10.)).text_color(p.ink_faint).child("None yet. Add any site whose search answers in JSON: paste its address, or let an AI assistant find it for you."));
+        }
+        let has_any = !s.search_custom_sources.is_empty();
+        for (i, src) in s.search_custom_sources.iter().enumerate() {
+            let host = src.url.split("://").nth(1).and_then(|r| r.split(['/', '?', '#']).next()).unwrap_or_default().to_string();
+            let shared = src.to_shared();
+            yours = yours.child(
+                div()
+                    .flex()
+                    .items_center()
+                    .gap(px(8.))
+                    .h(px(38.))
+                    .px(px(10.))
+                    .when(i > 0, |d| d.border_t_1().border_color(p.line))
+                    .child(Checkbox::new(("custom", i)).checked(src.enabled).on_click(cx.listener(move |this, on: &bool, _, cx| {
+                        let mut list = this.settings.search_custom_sources.clone();
+                        if let Some(s) = list.get_mut(i) {
+                            s.enabled = *on;
+                        }
+                        this.set_custom(list, cx);
+                    })))
+                    .child(div().max_w(px(260.)).min_w_0().truncate().child(src.name.clone()))
+                    .child(div().flex_1().min_w_0().truncate().text_size(px(12.)).text_color(p.ink_faint).child(host))
+                    .child(Button::new(("edit-src", i)).label("Edit").small().on_click(cx.listener(move |this, _, window, cx| this.open_editor(Some(i), window, cx))))
+                    .child(Button::new(("copy-src", i)).label("Copy").small().tooltip("Copy its definition, to share or keep").on_click(cx.listener(move |this, _, _, cx| {
+                        cx.write_to_clipboard(ClipboardItem::new_string(shared.clone()));
+                        this.flash = Some("Definition copied. Paste it into the answer box when adding a source.".into());
+                        cx.notify();
+                    })))
+                    .child(Button::new(("remove-src", i)).label("Remove").small().on_click(cx.listener(move |this, _, _, cx| {
+                        let mut list = this.settings.search_custom_sources.clone();
+                        if i < list.len() {
+                            let gone = list.remove(i);
+                            this.flash = Some(format!("Removed \u{201c}{}\u{201d}.", gone.name));
+                        }
+                        this.set_custom(list, cx);
+                    }))),
+            );
+        }
+        let max = s.search_max_results;
+        let counts = RESULT_COUNTS.iter().map(|n| (n.to_string(), n.to_string())).collect();
+        let kind = if s.search_indexer_kind == "prowlarr" { "prowlarr" } else { "jackett" };
+        let kinds = vec![("jackett".to_string(), "Jackett".to_string()), ("prowlarr".to_string(), "Prowlarr".to_string())];
+        let mut panel = panel
+            .child(legend(p, "Built in"))
+            .child(built_in)
+            .child(legend(p, "Your sources"))
+            .child(yours.child({
+                let hover = p.hover;
+                div()
+                    .id("add-src")
+                    .debug_selector(|| "add-source".into())
+                    .flex()
+                    .items_center()
+                    .h(px(36.))
+                    .px(px(10.))
+                    .border_t_1()
+                    .border_color(p.line)
+                    .text_color(p.accent)
+                    .cursor_pointer()
+                    .hover(move |s| s.bg(hover))
+                    .child(if has_any { "+ Add another source" } else { "+ Add a source" })
+                    .on_click(cx.listener(|this, _, window, cx| this.open_editor(None, window, cx)))
+            }))
+            .children(self.flash.clone().map(|f| div().text_size(px(12.)).text_color(p.ink_dim).child(f)))
+            .child(div().mt(px(20.)).child(legend(p, "Results")))
+            .child(frow(p, "Results per source:", div().w(px(100.)).child(dropdown(p, "max", max.to_string(), "max", counts, max.to_string(), &self.focus))))
+            .child(div().child(Checkbox::new("hide-dead").label("Hide torrents with no seeders").checked(s.search_hide_dead).on_click(cx.listener(|this, on: &bool, _, cx| {
+                this.set("searchHideDead", *on, cx);
+            }))));
+        if s.search_source_enabled("indexer") {
+            panel = panel
+                .child(div().mt(px(20.)).child(legend(p, "Your own search server")))
+                .child(frow(p, "Server:", div().w(px(140.)).child(dropdown(p, "kind", if kind == "prowlarr" { "Prowlarr" } else { "Jackett" }.into(), "kind", kinds, kind.into(), &self.focus))))
+                .child(frow(p, "Address:", Input::new(&self.indexer_url)))
+                .child(frow(p, "API key:", Input::new(&self.indexer_key)))
+                .child(hint(p, "Searches every site you have set up in your own Jackett or Prowlarr. The key is on its dashboard or under Settings → General."));
+        }
+        panel
+    }
+
+    /// The line under the search bar: where a search goes, and the way to add
+    /// somewhere else.
+    fn render_searching(&self, p: &Palette, cx: &mut Context<Self>) -> Div {
+        let s = &self.settings;
+        let mut names: Vec<String> = SEARCH_SOURCES
+            .iter()
+            // One switched on but not set up yet is not searched, so not named.
+            .filter(|(id, _)| s.search_source_ready(id))
+            .map(|(_, n)| n.to_string())
+            .collect();
+        names.extend(s.search_custom_sources.iter().filter(|c| c.enabled).map(|c| c.name.clone()));
+        let what = if names.is_empty() { "No sources are on.".to_string() } else { format!("Searching {}", names.join(" · ")) };
+        let accent = p.accent;
+        div()
+            .flex()
+            .items_center()
+            .gap(px(6.))
+            .h(px(20.))
+            .mt(px(6.))
+            .text_size(px(12.))
+            .child(div().min_w_0().truncate().text_color(p.ink_faint).child(what))
+            .child(div().flex_none().text_color(p.ink_faint).child("·"))
+            .child(
+                div()
+                    .id("add-source-link")
+                    .flex_none()
+                    .text_color(accent)
+                    .cursor_pointer()
+                    .hover(|s| s.underline())
+                    .child("Add a source")
+                    .on_click(cx.listener(|this, _, window, cx| this.open_editor(None, window, cx))),
+            )
+    }
+
+    /// What the sheet says before the first search, when nothing but the
+    /// Internet Archive would be searched.
+    fn render_welcome(&self, p: &Palette, cx: &mut Context<Self>) -> Option<Div> {
+        let s = &self.settings;
+        let only_archive = s.search_custom_sources.iter().all(|c| !c.enabled) && !s.search_source_ready("indexer");
+        if self.searched || self.show_settings || !only_archive {
+            return None;
+        }
+        Some(
+            div()
+                .mt(px(12.))
+                .p(px(14.))
+                .rounded(RADIUS)
+                .border_1()
+                .border_color(p.line)
+                .child(div().mb(px(6.)).font_weight(FontWeight::SEMIBOLD).child("Choose where to search"))
+                .child(div().mb(px(10.)).text_color(p.ink_dim).child("Out of the box ztorrent searches the Internet Archive, a library of free, legal films, music, books and software. Add any other site you use by pasting its search address, or let an AI assistant find it for you."))
+                .child(
+                    div()
+                        .flex()
+                        .gap(px(8.))
+                        .child(Button::new("welcome-add").label("Add a source…").small().primary().on_click(cx.listener(|this, _, window, cx| this.open_editor(None, window, cx))))
+                        .child(Button::new("welcome-settings").label("Search settings").small().on_click(cx.listener(|this, _, _, cx| {
+                            this.show_settings = true;
+                            cx.notify();
+                        }))),
+                ),
+        )
+    }
+}
+
+impl Render for SearchSheet {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let p = Theme::get(cx).clone();
+        // What is left of the window once the dialog's own title, search row and
+        // footer are drawn, shared between the settings panel and the results.
+        // The sheet sits ~120px down the window; its title, search row, status
+        // lines, table header and footer take ~340px more.
+        let room = (f32::from(window.viewport_size().height) - 120. - 340. - 22. * self.notes.len() as f32).max(160.);
+        let (panel_h, results_h) = if self.show_settings && !self.results.is_empty() { (room * 0.6, room * 0.4) } else { (room, room) };
+        let status = if self.busy {
+            Some("Searching…".to_string())
+        } else if self.searched && self.results.is_empty() && self.notes.is_empty() {
+            Some("Nothing found. Try fewer words, another category, or more sources.".to_string())
+        } else if self.searched && !self.results.is_empty() {
+            Some(format!("{} results", self.results.len()))
+        } else {
+            None
+        };
+        let mut list = div().flex().flex_col();
+        for (i, r) in self.results.iter().enumerate() {
+            let seeds = r.seeders.map(|n| n.to_string()).unwrap_or_else(|| "–".into());
+            let peers = r.leechers.map(|n| n.to_string()).unwrap_or_else(|| "–".into());
+            let full = format!("{}\n{}", r.title, r.source);
+            list = list.child(
+                div()
+                    .id(("hit", i))
+                    .flex()
+                    .items_center()
+                    .gap(px(10.))
+                    .min_h(px(34.))
+                    .py(px(5.))
+                    .px(px(10.))
+                    .border_b_1()
+                    .border_color(p.line)
+                    .tooltip(move |window, cx| gpui_component::tooltip::Tooltip::new(full.clone()).build(window, cx))
+                    // Long release names wrap onto a second line rather than vanish.
+                    .child(div().flex_1().min_w_0().line_clamp(2).child(r.title.clone()))
+                    .child(div().w(px(96.)).flex_none().truncate().text_color(p.ink_faint).child(r.source.clone()))
+                    .child(div().w(px(76.)).flex_none().flex().justify_end().font_features(tabular()).child(fmt::bytes(r.size as f64, true)))
+                    .child(div().w(px(48.)).flex_none().flex().justify_end().font_features(tabular()).child(seeds))
+                    .child(div().w(px(48.)).flex_none().flex().justify_end().font_features(tabular()).text_color(p.ink_dim).child(peers))
+                    .child(Button::new(("add", i)).label("Add").small().on_click(cx.listener(move |this, _, window, cx| {
+                        let link = this.results[i].link.clone();
+                        window.close_dialog(cx);
+                        open_add(window, cx, TorrentSource::parse(&link), None);
+                    }))),
+            );
+        }
+        let (sort, descending) = (self.sort, self.descending);
+        let heading = |text: &'static str, by: SortBy, w: Option<f32>, right: bool| {
+            let arrow = if sort == by { if descending { " ▼" } else { " ▲" } } else { "" };
+            let hover = p.ink;
+            div()
+                .id(text)
+                .flex()
+                .when(right, |d| d.justify_end())
+                .map(|d| match w {
+                    Some(w) => d.w(px(w)).flex_none(),
+                    None => d.flex_1(),
+                })
+                .cursor_pointer()
+                .hover(move |s| s.text_color(hover))
+                .child(format!("{text}{arrow}"))
+                .on_click(cx.listener(move |this, _, _, cx| this.sort_by(by, cx)))
+        };
+        let header = div()
+            .flex()
+            .items_center()
+            .gap(px(10.))
+            .h(px(26.))
+            .px(px(10.))
+            .border_b_1()
+            .border_color(p.line)
+            .text_size(px(11.))
+            .text_color(p.ink_faint)
+            .child(heading("NAME", SortBy::Name, None, false))
+            .child(heading("SOURCE", SortBy::Source, Some(96.), false))
+            .child(heading("SIZE", SortBy::Size, Some(76.), true))
+            .child(heading("SEEDS", SortBy::Seeds, Some(48.), true))
+            .child(div().w(px(48.)).flex_none().flex().justify_end().child("PEERS"))
+            .child(div().w(px(52.)).flex_none());
+
+        let category = self.settings.search_category.clone();
+        let category_label = SEARCH_CATEGORIES.iter().find(|(id, _)| *id == category).map_or("All", |(_, n)| n).to_string();
+        let categories = SEARCH_CATEGORIES.iter().map(|(id, n)| (id.to_string(), n.to_string())).collect();
+        let settings_on = self.show_settings;
+        let (gear_bg, gear_fg) = if settings_on { (p.accent_soft, p.accent) } else { (gpui::transparent_black(), p.ink_dim) };
+        let hover_bg = p.hover;
+        let welcome = self.render_welcome(&p, cx);
+        let settings = settings_on.then(|| self.render_settings(&p, cx));
+
+        div()
+            .id("search-sheet")
+            .track_focus(&self.focus)
+            .flex()
+            .flex_col()
+            .on_action(cx.listener(|this, a: &PickOption, _, cx| match a.field.as_str() {
+                "category" => this.set("searchCategory", a.value.clone(), cx),
+                "kind" => this.set("searchIndexerKind", a.value.clone(), cx),
+                "max" => {
+                    if let Ok(n) = a.value.parse::<u64>() {
+                        this.set("searchMaxResults", n, cx);
+                    }
+                }
+                _ => {}
+            }))
+            .child(title(&p, "Search Online"))
+            .child(
+                div()
+                    .flex()
+                    .items_center()
+                    .gap(px(8.))
+                    .child(div().flex_1().child(Input::new(&self.query)))
+                    .child(div().w(px(120.)).child(dropdown(&p, "category", category_label, "category", categories, category, &self.focus)))
+                    .child(
+                        div()
+                            .id("search-settings")
+                            .debug_selector(|| "search-settings".into())
+                            .flex()
+                            .items_center()
+                            .justify_center()
+                            .gap(px(6.))
+                            .h(px(30.))
+                            .px(px(10.))
+                            .rounded(RADIUS)
+                            .border_1()
+                            .border_color(if settings_on { p.accent } else { p.line_hard })
+                            .bg(gear_bg)
+                            .text_color(gear_fg)
+                            .hover(move |s| s.bg(hover_bg))
+                            .child(icon("preferences", 15., gear_fg))
+                            .child("Sources")
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                if this.show_settings {
+                                    this.save_indexer_fields(cx);
+                                    this.editor = None;
+                                }
+                                this.show_settings = !this.show_settings;
+                                cx.notify();
+                            })),
+                    )
+                    .child(div().debug_selector(|| "search-go".into()).child(Button::new("go").label("Search").primary().disabled(self.busy).on_click(cx.listener(|this, _, window, cx| this.run(window, cx))))),
+            )
+            .child(self.render_searching(&p, cx))
+            .child(div().id("search-settings-panel").max_h(px(panel_h)).overflow_y_scroll().children(settings))
+            .children(welcome)
+            .children(status.map(|s| div().mt(px(10.)).text_color(p.ink_dim).child(s)))
+            .children(self.notes.iter().map(|n| div().mt(px(6.)).text_color(p.warn).child(n.clone())))
+            .children((!self.results.is_empty()).then(|| {
+                div()
+                    .mt(px(10.))
+                    .border_1()
+                    .border_color(p.line)
+                    .rounded(RADIUS)
+                    .child(header)
+                    .child(div().id("search-results").max_h(px(results_h)).overflow_y_scroll().child(list))
+            }))
+            .child(
+                div()
+                    .flex()
+                    .items_center()
+                    .gap(px(16.))
+                    .mt(px(16.))
+                    .pt(px(14.))
+                    .border_t_1()
+                    .border_color(p.line)
+                    .child(div().flex_1().min_w_0().text_size(px(11.)).text_color(p.ink_faint).child(RESPONSIBILITY))
+                    .child(Button::new("close").label("Close").on_click(|_, window, cx| window.close_dialog(cx))),
             )
     }
 }

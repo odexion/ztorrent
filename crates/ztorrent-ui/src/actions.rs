@@ -9,6 +9,7 @@ actions!(
     [
         AddTorrent,
         AddUrl,
+        SearchOnline,
         CreateTorrent,
         Preferences,
         About,
@@ -117,6 +118,7 @@ pub fn bind_keys(cx: &mut App) {
     cx.bind_keys([
         KeyBinding::new(&k("mod-o"), AddTorrent, None),
         KeyBinding::new(&k("mod-u"), AddUrl, None),
+        KeyBinding::new(&k("mod-shift-f"), SearchOnline, None),
         KeyBinding::new(&k("mod-n"), CreateTorrent, None),
         KeyBinding::new(&k("mod-,"), Preferences, None),
         KeyBinding::new(&k("mod-alt-,"), Preferences, None),

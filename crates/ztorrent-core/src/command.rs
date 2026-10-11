@@ -129,6 +129,10 @@ pub enum Command {
     AddPaths(Vec<PathBuf>),
     CreateTorrent { options: CreateTorrentOptions, progress: Option<futures_channel::mpsc::UnboundedSender<f32>>, reply: Reply<Result<u64, String>> },
     SaveTorrentFile { id: String, dest: PathBuf, reply: Reply<Result<(), String>> },
+    /// Looks the words up with every search provider, over the same route as torrent traffic.
+    Search { query: String, options: SearchOptions, reply: Reply<SearchOutcome> },
+    /// Runs one search with a source the user is adding, to show what it finds.
+    TestSource { source: CustomSource, query: String, reply: Reply<Result<Vec<SearchResult>, String>> },
 
     Start(Vec<String>),
     Pause(Vec<String>),

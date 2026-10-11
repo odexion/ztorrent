@@ -62,6 +62,7 @@ you that it's from an unidentified developer. This is expected.
 - **File ▸ Add Torrent…** and pick a file
 - Copy a magnet link, then **File ▸ Add from URL…**
 - Double-click a `.torrent` file anywhere on your computer
+- **File ▸ Search Online…** (the globe button), search, and click **Add** on a result
 
 Then pick where to save it and click OK. That's it — the download starts, and the
 bar in the Status column fills up as it goes.
@@ -75,11 +76,22 @@ resume by themselves when you reopen the app, so it's safe to quit partway throu
 |---|---|
 | Space | Pause or resume whatever is selected |
 | ⌘F / Ctrl+F | Search your list |
+| ⇧⌘F / Ctrl+Shift+F | Search online |
 | ⌘L / Ctrl+L | Switch between light and dark |
 | Right-click a torrent | Open the folder, copy the magnet link, remove it |
 | Bottom of the window | Your current download and upload speeds |
 
 There are more shortcuts under each menu, and everything has a right-click menu.
+
+### Searching online
+
+**Search Online** looks through the [Internet Archive](https://archive.org), a
+library of free, legal films, music, books and software, plus any sources you
+choose. ztorrent comes with no third-party torrent sites. To add a site you use,
+click the gear in the search window, then **Add a source…**, and paste the site's
+search address with `{query}` where the words go:
+`https://example.org/api?q={query}`. You can also connect your own Jackett or
+Prowlarr. The walkthrough is in [docs/search-sources.md](docs/search-sources.md).
 
 ### Updates
 
@@ -102,6 +114,7 @@ Nothing is installed until you click, and you can turn the whole thing off in
 - Light and dark themes
 - Optional privacy routing through a proxy or VPN connection
 - Make your own torrents to share
+- Search online, with sources you choose
 - Tells you when a new version is out, and updates itself when you say so
 
 ## Something not working?
@@ -121,6 +134,7 @@ Developer notes — building, architecture, privacy internals — are in
 [docs/development.md](docs/development.md).
 
 MIT licensed. Please only share files you have the right to share.
+See the [legal disclaimer](LEGAL.md) and the [privacy notice](PRIVACY.md).
 
 ## Code signing policy
 
@@ -135,10 +149,11 @@ builds, and only for a release tag.
 
 Changes from anyone else are merged only after a committer has reviewed them.
 
-**Privacy.** ztorrent connects to other computers only to do what you ask of it:
-to the trackers, peers and DHT of the torrents you add, and to GitHub, to check
-for a new version (turn that off in **Preferences ▸ General ▸ Updates**). It
-sends no usage data or other information anywhere.
+**Privacy.** ztorrent collects nothing about you: no accounts, analytics or
+telemetry. It connects to other computers only to do what you ask of it: to the
+trackers, peers and DHT of the torrents you add; to the search sources you turn
+on, when you search; and to GitHub, to check for a new version (turn that off in
+**Preferences ▸ General ▸ Updates**). The full notice is in [PRIVACY.md](PRIVACY.md).
 
 [mac-arm]: https://github.com/odexion/ztorrent/releases/download/v0.5.1/ztorrent-0.5.1-mac-arm64.dmg
 [mac-x64]: https://github.com/odexion/ztorrent/releases/download/v0.5.1/ztorrent-0.5.1-mac-x64.dmg

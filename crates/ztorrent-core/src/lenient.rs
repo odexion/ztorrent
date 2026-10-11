@@ -62,3 +62,11 @@ pub fn opt_string<'de, D: Deserializer<'de>>(d: D) -> Result<Option<String>, D::
         _ => None,
     })
 }
+
+/// A list where an entry this build cannot read is dropped, not the whole list.
+pub fn list<'de, D: Deserializer<'de>, T: serde::de::DeserializeOwned>(d: D) -> Result<Vec<T>, D::Error> {
+    Ok(match Value::deserialize(d)? {
+        Value::Array(items) => items.into_iter().filter_map(|v| serde_json::from_value(v).ok()).collect(),
+        _ => Vec::new(),
+    })
+}

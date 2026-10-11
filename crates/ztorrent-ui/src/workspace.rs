@@ -586,6 +586,11 @@ impl Render for Workspace {
                     crate::dialogs::open_url(window, cx)
                 }
             }))
+            .on_action(cx.listener(|_, _: &SearchOnline, window, cx| {
+                if !sheet_up(window, cx) {
+                    crate::dialogs::open_search(window, cx)
+                }
+            }))
             .on_action(cx.listener(|_, _: &CreateTorrent, window, cx| {
                 if !sheet_up(window, cx) {
                     crate::dialogs::open_create(window, cx)

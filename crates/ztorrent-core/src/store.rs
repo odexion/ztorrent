@@ -128,14 +128,14 @@ impl Store {
     /// than wiping it.
     fn open_secrets(&self, settings: &mut Settings) {
         for key in SECRET_KEYS {
-            debug_assert_eq!(key, "proxyPassword");
-            let Some(sealed) = settings.proxy_password_enc.clone() else { continue };
-            match self.secrets.as_ref().and_then(|c| c.decrypt(&sealed).ok()) {
+            let (value, sealed) = secret_slots(settings, key);
+            let Some(text) = sealed.clone() else { continue };
+            match self.secrets.as_ref().and_then(|c| c.decrypt(&text).ok()) {
                 Some(opened) => {
-                    settings.proxy_password = opened;
-                    settings.proxy_password_enc = None;
+                    *value = opened;
+                    *sealed = None;
                 }
-                None => settings.proxy_password = String::new(),
+                None => value.clear(),
             }
         }
     }
@@ -148,8 +148,8 @@ impl Store {
     /// including when it is cleared to ''.
     pub fn patch_settings(&mut self, patch: &SettingsPatch) -> &Settings {
         let mut next = self.data.settings.patched(patch);
-        if SECRET_KEYS.iter().any(|k| patch.contains_key(*k)) {
-            next.proxy_password_enc = None;
+        for key in SECRET_KEYS.iter().filter(|k| patch.contains_key(**k)) {
+            *secret_slots(&mut next, key).1 = None;
         }
         self.data.settings = next;
         self.save();
@@ -258,6 +258,15 @@ fn open_private(path: &Path) -> std::io::Result<fs::File> {
     fs::File::create(path)
 }
 
+
+/// A secret setting's value in memory and its sealed copy from disk.
+fn secret_slots<'a>(settings: &'a mut Settings, key: &str) -> (&'a mut String, &'a mut Option<String>) {
+    match key {
+        "searchIndexerKey" => (&mut settings.search_indexer_key, &mut settings.search_indexer_key_enc),
+        _ => (&mut settings.proxy_password, &mut settings.proxy_password_enc),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -326,6 +335,20 @@ mod tests {
         plain.patch_settings(&patch("proxyPassword", "fallback"));
         plain.flush();
         assert_eq!(on_disk(dir.path())["settings"]["proxyPassword"], "fallback");
+    }
+
+    #[test]
+    fn indexer_key_is_sealed_like_the_proxy_password() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut store = Store::open(dir.path(), Some(Box::new(Fake)));
+        store.patch_settings(&patch("searchIndexerKey", "abc123"));
+        store.flush();
+        let disk = on_disk(dir.path());
+        assert!(disk["settings"].get("searchIndexerKey").is_none(), "not written in the clear");
+        assert_eq!(disk["settings"]["searchIndexerKeyEnc"], "ENC(abc123)");
+        let store = Store::open(dir.path(), Some(Box::new(Fake)));
+        assert_eq!(store.settings().search_indexer_key, "abc123");
+        assert!(store.settings().search_indexer_key_enc.is_none());
     }
 
     #[test]

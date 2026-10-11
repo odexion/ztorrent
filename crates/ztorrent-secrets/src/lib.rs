@@ -1,4 +1,4 @@
-//! The proxy password's seal.
+//! The seal on saved secrets: the proxy password and the search server's API key.
 //!
 //! Electron's `safeStorage` is Chromium's os_crypt, whose formats are stable
 //! and documented in the Chromium source. Reproducing them -- rather than

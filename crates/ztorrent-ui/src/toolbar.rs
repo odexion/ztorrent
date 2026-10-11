@@ -28,6 +28,7 @@ impl Workspace {
         vec![
             b("add-file", "Add Torrent", accel("O", false), Box::new(actions::AddTorrent), true),
             b("add-url", "Add Torrent from URL", accel("U", false), Box::new(actions::AddUrl), true),
+            b("globe", "Search Online", accel("F", true), Box::new(actions::SearchOnline), true),
             b("create", "Create New Torrent", accel("N", false), Box::new(actions::CreateTorrent), true),
             None,
             b("remove", "Remove", delete_key, Box::new(actions::Remove), n > 0),

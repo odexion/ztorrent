@@ -30,6 +30,7 @@ pub fn set_menus(settings: &Settings, cx: &mut App) {
     let mut file = vec![
         MenuItem::action("Add Torrent…", AddTorrent),
         MenuItem::action("Add Torrent from URL…", AddUrl),
+        MenuItem::action("Search Online…", SearchOnline),
         MenuItem::separator(),
         MenuItem::action("Create New Torrent…", CreateTorrent),
         MenuItem::separator(),

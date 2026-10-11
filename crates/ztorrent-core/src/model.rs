@@ -500,3 +500,293 @@ mod tests {
         assert_eq!(tag_style(None), ("label", "slate"));
     }
 }
+
+/// One hit from an online search.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct SearchResult {
+    /// Which provider found it.
+    pub source: String,
+    pub title: String,
+    /// A magnet link or an http(s) link to a .torrent, as `TorrentSource::parse` reads them.
+    pub link: String,
+    /// 0 when the provider does not say.
+    pub size: u64,
+    pub seeders: Option<u32>,
+    pub leechers: Option<u32>,
+}
+
+/// The search providers built into the engine, by id and the name the window
+/// shows. Only sources that are neutral by nature: an archive of freely
+/// licensed works, and the self-hosted search servers whose sites the user
+/// chooses. Every other source is one the user adds; see [`CustomSource`].
+pub const SEARCH_SOURCES: [(&str, &str); 2] = [("archive", "Internet Archive"), ("indexer", "Your own search server")];
+
+/// The categories every provider can narrow a search to.
+pub const SEARCH_CATEGORIES: [(&str, &str); 6] =
+    [("all", "All"), ("video", "Video"), ("audio", "Audio"), ("books", "Books"), ("software", "Software"), ("games", "Games")];
+
+/// A search source the user added: any site with a search URL that answers in
+/// JSON. ztorrent ships none of these. Every mapping field left empty is found
+/// by looking at the answer; one that is set names the field to read instead,
+/// as a dotted path such as `data.movies`.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct CustomSource {
+    pub name: String,
+    /// The search URL, with `{query}` where the words go.
+    pub url: String,
+    pub enabled: bool,
+    /// Where the list of results is in the answer.
+    pub results: String,
+    /// A list inside each result that holds its torrents, when one result
+    /// comes in several versions.
+    pub items: String,
+    pub title: String,
+    pub hash: String,
+    pub magnet: String,
+    /// A link to a .torrent file.
+    pub link: String,
+    pub size: String,
+    pub seeders: String,
+    pub leechers: String,
+    /// Added to magnet links built from an info hash.
+    pub trackers: Vec<String>,
+    /// Other addresses of the same search, each with `{query}`, tried in turn
+    /// when the one before cannot be reached: sites of this kind move.
+    pub mirrors: Vec<String>,
+}
+
+impl Default for CustomSource {
+    fn default() -> Self {
+        CustomSource {
+            name: String::new(),
+            url: String::new(),
+            enabled: true,
+            results: String::new(),
+            items: String::new(),
+            title: String::new(),
+            hash: String::new(),
+            magnet: String::new(),
+            link: String::new(),
+            size: String::new(),
+            seeders: String::new(),
+            leechers: String::new(),
+            trackers: Vec::new(),
+            mirrors: Vec::new(),
+        }
+    }
+}
+
+impl CustomSource {
+    pub const QUERY: &str = "{query}";
+
+    /// What is wrong with it, said so the user can fix it.
+    pub fn check(&self) -> Result<(), String> {
+        let url = self.url.trim();
+        if self.name.trim().is_empty() {
+            return Err("Give the source a name.".into());
+        }
+        if !(url.starts_with("https://") || url.starts_with("http://")) {
+            return Err("The address must start with https:// or http://.".into());
+        }
+        if !url.contains(Self::QUERY) {
+            return Err("Put {query} in the address where the search words go, e.g. https://example.org/api?q={query}".into());
+        }
+        let host = url.split("://").nth(1).and_then(|r| r.split(['/', '?', '#']).next()).unwrap_or_default();
+        if host.is_empty() || host.contains('{') {
+            return Err("{query} must come after the site's address and the API's path, e.g. https://example.org/api?q={query} -- not https://example.org{query}".into());
+        }
+        if let Some(bad) = self.mirrors.iter().find(|m| !(m.starts_with("https://") || m.starts_with("http://")) || !m.contains(Self::QUERY)) {
+            return Err(format!("Each backup address must start with https:// and contain {{query}}: {bad}"));
+        }
+        Ok(())
+    }
+
+    /// A definition someone shared, as the JSON "Copy definition" gives.
+    ///
+    /// Read out of whatever surrounds it, so an AI assistant's answer can be
+    /// pasted as it is: in a code block, after a sentence, with a note below.
+    pub fn from_shared(text: &str) -> Result<CustomSource, String> {
+        let not_one = || "That is not a source definition. Paste the whole {…} part.".to_string();
+        // An assistant that found no API says so in an "error".
+        let refusal = json_objects(text)
+            .filter_map(parse_lenient::<Value>)
+            .find_map(|v| (v.get("url").is_none()).then(|| v.get("error").and_then(Value::as_str).map(String::from)).flatten());
+        if let Some(why) = refusal {
+            return Err(format!("The assistant found no API: {why}"));
+        }
+        let mut source: CustomSource = json_objects(text)
+            .filter_map(parse_lenient::<CustomSource>)
+            .find(|s| !s.url.is_empty())
+            .ok_or_else(not_one)?;
+        source.enabled = true;
+        // Assistants write the placeholder doubled now and then, as in a template.
+        source.url = source.url.trim().replace("{{query}}", Self::QUERY);
+        source.mirrors = source.mirrors.iter().map(|m| m.trim().replace("{{query}}", Self::QUERY)).filter(|m| !m.is_empty() && *m != source.url).collect();
+        source.check()?;
+        Ok(source)
+    }
+
+    /// Whether pasted text is a definition rather than an address.
+    pub fn looks_shared(text: &str) -> bool {
+        let t = text.trim();
+        !t.starts_with("http") && t.contains('{') && t.contains("\"url\"")
+    }
+
+    /// A question to paste into an AI assistant. It ends "for the following
+    /// website " so the site's name is typed straight after it, and asks for
+    /// nothing but JSON, so the whole reply can be pasted back.
+    pub fn assistant_prompt() -> String {
+        r#"I use the BitTorrent client ztorrent. It can search any website whose search API answers in JSON. Find the website's public search API, then reply with ONLY a JSON object that defines it as a ztorrent search source. No other text before or after it, and no code block.
+
+The JSON object:
+
+{
+  "name": "<a short name for the site>",
+  "url": "<the search API address, with {query} exactly where the URL-encoded search words go>"
+}
+
+Rules:
+- "url" must start with https:// (or http://) and contain {query} exactly once, e.g. https://example.org/api/search?q={query}
+- Opening "url" with {query} replaced by a word must return JSON, not a web page. Use the API's documented address, not the address of the site's search page.
+- Sites like this often move to a new domain and leave the old one dead. Give the address that works today. If the same API is also reachable at other domains, list them in an optional "mirrors" field: a list of addresses in the same form, each with {query}. ztorrent tries them in turn.
+- Each result in the API's answer must have a magnet link, a 40-character info hash, or a link to a .torrent file. Otherwise ztorrent cannot add it.
+- ztorrent finds the results and their fields in the answer by itself. Only if the API's answer is unusual, also add any of these optional fields, each a dotted path into the JSON answer (numbers pick from a list, e.g. data.0.items):
+  "results": the list of results
+  "items": a list inside each result that holds its torrents, when one result comes in several versions
+  "title", "hash", "magnet", "link" (the .torrent link), "size", "seeders", "leechers"
+  "trackers": a list of tracker addresses to add to magnet links built from an info hash
+  Write paths with dots only, no $ or [*]. A path for a field inside "items" starts from one item of that list (write "hash", not "torrents.hash").
+- If the API needs a key, put it into "url" the way the API expects, and add a "note" field saying where to get the key.
+- If you are not sure such an API exists or works this way, reply with {"error": "<why>"} instead. Do not invent an address: it will be tested.
+- The reply must be strictly valid JSON: straight double quotes, no backslash before ":" or "/", no trailing commas, no comments.
+
+Reply with the JSON object for the following website "#
+            .to_string()
+    }
+
+    /// What an assistant added beside the definition: a "note", such as where
+    /// to get an API key.
+    pub fn shared_note(text: &str) -> Option<String> {
+        json_objects(text)
+            .filter_map(parse_lenient::<Value>)
+            .find_map(|v| v.get("note").and_then(Value::as_str).map(|n| n.trim().to_string()))
+            .filter(|n| !n.is_empty())
+    }
+
+    /// The JSON to share it with, leaving out what is empty.
+    pub fn to_shared(&self) -> String {
+        let mut value = serde_json::to_value(self).unwrap_or_default();
+        if let Value::Object(map) = &mut value {
+            map.remove("enabled");
+            map.retain(|_, v| !matches!(v, Value::String(s) if s.is_empty()) && !matches!(v, Value::Array(a) if a.is_empty()));
+        }
+        serde_json::to_string_pretty(&value).unwrap_or_default()
+    }
+}
+
+/// JSON as written, or else with the slips assistants and chat windows make
+/// put right: `\:` and other escapes JSON does not have, curly quotes, and a
+/// comma before a closing bracket.
+fn parse_lenient<T: serde::de::DeserializeOwned>(text: &str) -> Option<T> {
+    serde_json::from_str(text).ok().or_else(|| serde_json::from_str(&repair_json(text)).ok())
+}
+
+fn repair_json(text: &str) -> String {
+    let text = text.replace(['\u{201c}', '\u{201d}'], "\"");
+    let chars: Vec<char> = text.chars().collect();
+    let mut out = String::with_capacity(text.len());
+    let mut in_string = false;
+    let mut i = 0;
+    while i < chars.len() {
+        let c = chars[i];
+        if in_string {
+            match c {
+                '\\' => {
+                    match chars.get(i + 1) {
+                        Some(n) if "\"\\/bfnrtu".contains(*n) => {
+                            out.push(c);
+                            out.push(*n);
+                        }
+                        // An escape JSON does not have: keep the character alone.
+                        Some(n) => out.push(*n),
+                        None => {}
+                    }
+                    i += 2;
+                    continue;
+                }
+                '"' => in_string = false,
+                _ => {}
+            }
+            out.push(c);
+        } else {
+            match c {
+                '"' => in_string = true,
+                ',' if chars[i + 1..].iter().find(|c| !c.is_whitespace()).is_some_and(|n| *n == '}' || *n == ']') => {
+                    i += 1;
+                    continue;
+                }
+                _ => {}
+            }
+            out.push(c);
+        }
+        i += 1;
+    }
+    out
+}
+
+/// Every balanced `{…}` in some text, outermost first, braces inside JSON
+/// strings ignored: the candidates for a JSON object somewhere in prose.
+fn json_objects(text: &str) -> impl Iterator<Item = &str> {
+    let bytes = text.as_bytes();
+    (0..bytes.len()).filter(move |&i| bytes[i] == b'{').filter_map(move |start| {
+        let (mut depth, mut in_string, mut escaped) = (0usize, false, false);
+        for (i, &b) in bytes.iter().enumerate().skip(start) {
+            if in_string {
+                match b {
+                    _ if escaped => escaped = false,
+                    b'\\' => escaped = true,
+                    b'"' => in_string = false,
+                    _ => {}
+                }
+                continue;
+            }
+            match b {
+                b'"' => in_string = true,
+                b'{' => depth += 1,
+                b'}' => {
+                    depth -= 1;
+                    if depth == 0 {
+                        return Some(&text[start..=i]);
+                    }
+                }
+                _ => {}
+            }
+        }
+        None
+    })
+}
+
+/// How to search, as the search settings say.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct SearchOptions {
+    /// Ids from `SEARCH_SOURCES`.
+    pub sources: Vec<String>,
+    pub category: String,
+    /// Per provider.
+    pub max_results: usize,
+    pub hide_dead: bool,
+    pub indexer_kind: String,
+    pub indexer_url: String,
+    pub indexer_key: String,
+    /// The user's own sources that are switched on.
+    pub custom: Vec<CustomSource>,
+}
+
+/// What a search found, and which providers could not be reached. One provider
+/// being down must not hide what the others found, nor go unmentioned.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct SearchOutcome {
+    pub results: Vec<SearchResult>,
+    pub failures: Vec<String>,
+}

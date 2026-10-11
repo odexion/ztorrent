@@ -11,6 +11,7 @@ mod config;
 mod details;
 mod net;
 mod paths;
+mod search;
 mod torrent;
 
 pub use details::share_ratio;
@@ -785,6 +786,18 @@ impl Engine {
                     self.log(format!("Saved \"{name}\" as {}", dest.display()), LogLevel::Info);
                 }
                 let _ = reply.send(result);
+            }
+            Command::Search { query, options, reply } => {
+                let (policy, version) = (self.policy.clone(), self.version.clone());
+                std::thread::spawn(move || {
+                    let _ = reply.send(search::search(&query, &options, policy.as_ref(), &version));
+                });
+            }
+            Command::TestSource { source, query, reply } => {
+                let (policy, version) = (self.policy.clone(), self.version.clone());
+                std::thread::spawn(move || {
+                    let _ = reply.send(search::test_source(&source, &query, policy.as_ref(), &version));
+                });
             }
             Command::Start(ids) => ids.iter().for_each(|id| self.start_torrent(id)),
             Command::Pause(ids) => ids.iter().for_each(|id| self.pause(id)),
