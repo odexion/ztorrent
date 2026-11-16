@@ -103,6 +103,8 @@ where to look, as a dotted path into the JSON:
 | Backup addresses | Other addresses of the same search, each with `{query}`. Sites like this move domains; ztorrent tries these in turn when the main one cannot be reached. | `https://mirror.example.org/api?q={query}` |
 | Trackers for hashes | Trackers to add to magnet links ztorrent builds from an info hash. Optional: without any, ztorrent finds peers through the DHT. | `udp://tracker.example.org:1337/announce` |
 
+| Lookup address | For a site that searches by IMDb number only: see below. | `https://example.org/lookup?q={query}` |
+
 Numbers in a path pick from a list, so `results.0.files` is the `files` of the
 first result.
 
@@ -123,6 +125,25 @@ For example, with this answer:
 ztorrent already finds everything on its own. If it did not, you would set
 *Results list* to `data.items`, *Versions list* to `versions`, *Title* to `label`,
 and *Info hash* to `btih`.
+
+## Sites that search by IMDb number, not by words
+
+Some APIs cannot search by title. They want a film's or show's IMDb number, the
+`tt0944947` in its address on imdb.com. To search such a site by title, give the
+source two addresses:
+
+- **Address**: the site's API, with `{imdb}` where the number goes
+  (`tt0944947`), or `{imdb_number}` if the API wants it without the `tt`
+  (`0944947`):
+  `https://example.org/api/torrents?imdb_id={imdb_number}`
+- **Lookup address** (under **Advanced**): any JSON API that answers a title with
+  its IMDb number, with `{query}` where the words go:
+  `https://example.org/lookup?q={query}`
+
+When you search, ztorrent asks the lookup address for your words, takes the first
+IMDb number in its answer, and asks the site for that. Typing an IMDb number
+(`tt0944947`) as your search skips the lookup. The lookup address is a source
+like any other: you choose it, and it sees your search words and IP address.
 
 ## Sharing a source
 

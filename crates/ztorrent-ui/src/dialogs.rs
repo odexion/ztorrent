@@ -652,6 +652,7 @@ struct SourceEditor {
     mapping: BTreeMap<&'static str, Entity<InputState>>,
     trackers: Entity<InputState>,
     mirrors: Entity<InputState>,
+    lookup: Entity<InputState>,
     advanced: bool,
     /// The step-by-step guide is unfolded.
     guide: bool,
@@ -677,11 +678,12 @@ impl SourceEditor {
         self.url.update(cx, |s, cx| s.set_value(shared.url.clone(), window, cx));
         self.trackers.update(cx, |s, cx| s.set_value(shared.trackers.join(", "), window, cx));
         self.mirrors.update(cx, |s, cx| s.set_value(shared.mirrors.join(", "), window, cx));
+        self.lookup.update(cx, |s, cx| s.set_value(shared.lookup.clone(), window, cx));
         let values = [&shared.results, &shared.items, &shared.title, &shared.hash, &shared.magnet, &shared.link, &shared.size, &shared.seeders, &shared.leechers];
         for ((key, _), value) in MAPPING_FIELDS.iter().zip(values) {
             self.mapping[key].update(cx, |s, cx| s.set_value(value.clone(), window, cx));
         }
-        self.advanced |= values.iter().any(|v| !v.is_empty()) || !shared.trackers.is_empty() || !shared.mirrors.is_empty();
+        self.advanced |= values.iter().any(|v| !v.is_empty()) || !shared.trackers.is_empty() || !shared.mirrors.is_empty() || !shared.lookup.is_empty();
         self.preview.clear();
         self.error = None;
     }
@@ -874,7 +876,7 @@ impl SearchSheet {
             _ => String::new(),
         };
         let mapping = MAPPING_FIELDS.iter().map(|(key, _)| (*key, text_input(window, cx, &field(key), "found automatically"))).collect::<BTreeMap<_, _>>();
-        let advanced = mapping.keys().any(|k| !field(k).is_empty()) || !source.trackers.is_empty() || !source.mirrors.is_empty();
+        let advanced = mapping.keys().any(|k| !field(k).is_empty()) || !source.trackers.is_empty() || !source.mirrors.is_empty() || !source.lookup.is_empty();
         let typed = read(&self.query, cx).trim().to_string();
         let answer = cx.new(|cx| TextareaState::new(window, cx).rows(5).placeholder("Paste the assistant's whole answer here, or a definition someone shared"));
         let editor = SourceEditor {
@@ -886,6 +888,7 @@ impl SearchSheet {
             mapping,
             trackers: text_input(window, cx, &source.trackers.join(", "), "udp://tracker.example.org:1337/announce, …"),
             mirrors: text_input(window, cx, &source.mirrors.join(", "), "https://mirror.example.org/api?q={query}, …"),
+            lookup: text_input(window, cx, &source.lookup, "only for a site that searches by {imdb}"),
             advanced,
             guide: false,
             testing: false,
@@ -945,6 +948,7 @@ impl SearchSheet {
             leechers: m("leechers"),
             trackers: read(&ed.trackers, cx).split([',', '\n', ' ']).map(str::trim).filter(|t| !t.is_empty()).map(String::from).collect(),
             mirrors: read(&ed.mirrors, cx).split([',', '\n', ' ']).map(str::trim).filter(|t| !t.is_empty()).map(String::from).collect(),
+            lookup: read(&ed.lookup, cx).trim().to_string(),
         };
         source.check()?;
         if SEARCH_SOURCES.iter().any(|(_, n)| n.eq_ignore_ascii_case(&source.name)) {
@@ -1173,6 +1177,7 @@ impl SearchSheet {
             }
             form = form.child(frow(p, "Trackers for hashes:", Input::new(&ed.trackers)));
             form = form.child(frow(p, "Backup addresses:", Input::new(&ed.mirrors)));
+            form = form.child(frow(p, "Lookup address:", Input::new(&ed.lookup)));
         }
         form.child(
             div()

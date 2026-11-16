@@ -65,7 +65,9 @@ pub fn test_source(source: &CustomSource, query: &str, policy: Option<&EgressPol
     source.check()?;
     let client = net::client(policy, version)?;
     let query = query.trim();
-    let json = custom_answer(&client, source, query)?;
+    let Some(json) = custom_answer(&client, source, query)? else {
+        return Err(format!("The lookup address answered, but with no IMDb number for \u{201c}{query}\u{201d}. Try a title it would know."));
+    };
     let hits = read_custom(&json, source);
     if hits.is_empty() {
         // Nothing listed at all is the site having nothing for these words; a
@@ -287,19 +289,67 @@ fn custom(client: &Client, source: &CustomSource, query: &str, category: &str) -
     // A source has no notion of categories: it is asked the words alone, and
     // searched under any category, since nothing is known of what it holds.
     let _ = category;
-    let json = custom_answer(client, source, query)?;
+    let Some(json) = custom_answer(client, source, query)? else { return Ok(Vec::new()) };
     let mut hits = read_custom(&json, source);
     hits.sort_by(|a, b| b.seeders.cmp(&a.seeders));
     Ok(hits)
 }
 
-/// The first answer from the source's address or one of its backups.
-fn custom_answer(client: &Client, source: &CustomSource, query: &str) -> Result<Value, String> {
+/// The IMDb id for the search words, from the source's lookup address: the
+/// first one in its answer. The words themselves, when they are an id. None
+/// when the lookup knows no title by them.
+fn imdb_id(client: &Client, source: &CustomSource, query: &str) -> Result<Option<String>, String> {
+    if let Some(id) = imdb_in(query).filter(|id| id == query) {
+        return Ok(Some(id));
+    }
+    let url = source.lookup.trim().replace(CustomSource::QUERY, &percent_encode(query));
+    match get_json(client.get(url)) {
+        Ok(json) => Ok(first_imdb(&json)),
+        // How a lookup says it has nothing by that name.
+        Err(err) if err == "HTTP 404" => Ok(None),
+        Err(err) => Err(format!("lookup at {}: {err}", host(&source.lookup))),
+    }
+}
+
+/// The first IMDb id in an answer, in the order it lists its titles.
+fn first_imdb(json: &Value) -> Option<String> {
+    match json {
+        Value::String(s) => imdb_in(s),
+        Value::Array(list) => list.iter().find_map(first_imdb),
+        Value::Object(map) => map.values().find_map(first_imdb),
+        _ => None,
+    }
+}
+
+/// An IMDb id, `tt` and seven or more digits, alone or inside a link.
+fn imdb_in(text: &str) -> Option<String> {
+    text.match_indices("tt").find_map(|(at, _)| {
+        let before = text[..at].chars().next_back();
+        let digits: String = text[at + 2..].chars().take_while(char::is_ascii_digit).collect();
+        (!before.is_some_and(|c| c.is_ascii_alphanumeric()) && (7..=10).contains(&digits.len())).then(|| format!("tt{digits}"))
+    })
+}
+
+/// The first answer from the source's address or one of its backups. None
+/// when its lookup found no IMDb id to ask it for.
+fn custom_answer(client: &Client, source: &CustomSource, query: &str) -> Result<Option<Value>, String> {
+    let imdb = if source.lookup.trim().is_empty() {
+        String::new()
+    } else {
+        match imdb_id(client, source, query)? {
+            Some(id) => id,
+            None => return Ok(None),
+        }
+    };
     let addresses: Vec<&String> = std::iter::once(&source.url).chain(&source.mirrors).collect();
     let mut failures = Vec::new();
     let mut answer = None;
     for address in &addresses {
-        let url = address.trim().replace(CustomSource::QUERY, &percent_encode(query));
+        let url = address
+            .trim()
+            .replace(CustomSource::QUERY, &percent_encode(query))
+            .replace(CustomSource::IMDB_NUMBER, imdb.trim_start_matches("tt"))
+            .replace(CustomSource::IMDB, &imdb);
         if !(url.starts_with("https://") || url.starts_with("http://")) {
             return Err("its address must start with https:// or http://".into());
         }
@@ -316,7 +366,7 @@ fn custom_answer(client: &Client, source: &CustomSource, query: &str) -> Result<
         let hint = if moved { ". The site may have moved to a new address: ask for the current one, or add it as a backup address (\"mirrors\")" } else { "" };
         return Err(format!("{}{hint}", failures.join("; ")));
     };
-    Ok(json)
+    Ok(Some(json))
 }
 
 /// The host part of an address, to name it in a message.
@@ -588,6 +638,25 @@ mod tests {
 
     fn src() -> CustomSource {
         CustomSource { name: "Mine".into(), url: "https://example.org/api?q={query}".into(), ..Default::default() }
+    }
+
+    #[test]
+    fn a_lookup_answer_gives_its_first_imdb_id() {
+        let one = json!({"name": "Show", "externals": {"imdb": "tt0944947", "tvrage": 24493}});
+        assert_eq!(first_imdb(&one).as_deref(), Some("tt0944947"));
+        let many = json!([{"show": {"externals": {"imdb": null}}}, {"show": {"url": "https://www.imdb.com/title/tt1234567/"}}]);
+        assert_eq!(first_imdb(&many).as_deref(), Some("tt1234567"));
+        assert_eq!(first_imdb(&json!({"title": "Seattle", "id": "att1234567", "n": "tt123"})), None);
+    }
+
+    #[test]
+    fn a_source_by_imdb_needs_a_lookup() {
+        let mut s = CustomSource { name: "Mine".into(), url: "https://example.org/api?imdb_id={imdb_number}".into(), ..Default::default() };
+        assert!(s.check().is_err());
+        s.lookup = "https://example.org/lookup?q={query}".into();
+        assert!(s.check().is_ok());
+        s.url = "https://example.org/api?q={query}".into();
+        assert!(s.check().is_err());
     }
 
     #[test]

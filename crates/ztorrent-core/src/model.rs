@@ -554,6 +554,10 @@ pub struct CustomSource {
     /// Other addresses of the same search, each with `{query}`, tried in turn
     /// when the one before cannot be reached: sites of this kind move.
     pub mirrors: Vec<String>,
+    /// For a site that searches by IMDb id alone: an address with `{query}`
+    /// whose answer holds the id for the words. It is asked first, and what it
+    /// finds goes where the search URL says `{imdb}` or `{imdb_number}`.
+    pub lookup: String,
 }
 
 impl Default for CustomSource {
@@ -573,12 +577,22 @@ impl Default for CustomSource {
             leechers: String::new(),
             trackers: Vec::new(),
             mirrors: Vec::new(),
+            lookup: String::new(),
         }
     }
 }
 
 impl CustomSource {
     pub const QUERY: &str = "{query}";
+    /// An IMDb id as it is written, `tt0944947`.
+    pub const IMDB: &str = "{imdb}";
+    /// An IMDb id without its `tt`, `0944947`.
+    pub const IMDB_NUMBER: &str = "{imdb_number}";
+
+    /// Whether an address asks for an IMDb id rather than the search words.
+    pub fn wants_imdb(address: &str) -> bool {
+        address.contains(Self::IMDB) || address.contains(Self::IMDB_NUMBER)
+    }
 
     /// What is wrong with it, said so the user can fix it.
     pub fn check(&self) -> Result<(), String> {
@@ -589,15 +603,28 @@ impl CustomSource {
         if !(url.starts_with("https://") || url.starts_with("http://")) {
             return Err("The address must start with https:// or http://.".into());
         }
-        if !url.contains(Self::QUERY) {
+        let web = |a: &str| a.starts_with("https://") || a.starts_with("http://");
+        let lookup = self.lookup.trim();
+        if Self::wants_imdb(url) && lookup.is_empty() {
+            return Err("The address asks for an IMDb number ({imdb}). Under Advanced, give a Lookup address that finds it from the search words, e.g. https://example.org/lookup?q={query}".into());
+        }
+        if !lookup.is_empty() {
+            if !web(lookup) || !lookup.contains(Self::QUERY) {
+                return Err("The lookup address must start with https:// and contain {query}.".into());
+            }
+            if !Self::wants_imdb(url) {
+                return Err("With a lookup address, put {imdb} (tt0944947) or {imdb_number} (0944947) in the address where the IMDb number goes.".into());
+            }
+        }
+        if !url.contains(Self::QUERY) && !Self::wants_imdb(url) {
             return Err("Put {query} in the address where the search words go, e.g. https://example.org/api?q={query}".into());
         }
         let host = url.split("://").nth(1).and_then(|r| r.split(['/', '?', '#']).next()).unwrap_or_default();
         if host.is_empty() || host.contains('{') {
             return Err("{query} must come after the site's address and the API's path, e.g. https://example.org/api?q={query} -- not https://example.org{query}".into());
         }
-        if let Some(bad) = self.mirrors.iter().find(|m| !(m.starts_with("https://") || m.starts_with("http://")) || !m.contains(Self::QUERY)) {
-            return Err(format!("Each backup address must start with https:// and contain {{query}}: {bad}"));
+        if let Some(bad) = self.mirrors.iter().find(|m| !web(m) || !(m.contains(Self::QUERY) || Self::wants_imdb(m))) {
+            return Err(format!("Each backup address must start with https:// and contain {{query}}, as the address does: {bad}"));
         }
         Ok(())
     }
@@ -623,6 +650,7 @@ impl CustomSource {
         // Assistants write the placeholder doubled now and then, as in a template.
         source.url = source.url.trim().replace("{{query}}", Self::QUERY);
         source.mirrors = source.mirrors.iter().map(|m| m.trim().replace("{{query}}", Self::QUERY)).filter(|m| !m.is_empty() && *m != source.url).collect();
+        source.lookup = source.lookup.trim().replace("{{query}}", Self::QUERY);
         source.check()?;
         Ok(source)
     }
@@ -657,6 +685,7 @@ Rules:
   "title", "hash", "magnet", "link" (the .torrent link), "size", "seeders", "leechers"
   "trackers": a list of tracker addresses to add to magnet links built from an info hash
   Write paths with dots only, no $ or [*]. A path for a field inside "items" starts from one item of that list (write "hash", not "torrents.hash").
+- If the API cannot search by words but only by IMDb id, write {imdb} (for tt0944947) or {imdb_number} (for 0944947) in "url" in place of {query}, and add a "lookup" field: the address of a public JSON API, with {query}, whose answer for a title contains its IMDb id. ztorrent asks the lookup first.
 - If the API needs a key, put it into "url" the way the API expects, and add a "note" field saying where to get the key.
 - If you are not sure such an API exists or works this way, reply with {"error": "<why>"} instead. Do not invent an address: it will be tested.
 - The reply must be strictly valid JSON: straight double quotes, no backslash before ":" or "/", no trailing commas, no comments.

@@ -36,7 +36,7 @@ connections go to the ztorrent project.
 | You download or share a torrent | The torrent's trackers, other peers, and the DHT network | Your IP address and which torrents you are sharing. Everyone in a torrent sees this; that is how BitTorrent works. |
 | Port forwarding is on (UPnP, on by default) | Your own router | A request to open a port |
 | You add a torrent from a web link | The address you gave | Your IP address and the request |
-| You search online | Each search source you have turned on: the Internet Archive, your Jackett or Prowlarr server, and any sources you added | Your search words and your IP address |
+| You search online | Each search source you have turned on: the Internet Archive, your Jackett or Prowlarr server, and any sources you added, with the lookup address of one that has one | Your search words and your IP address |
 | Automatic updates are on (default) | GitHub, every few hours | Your IP address and your ztorrent version |
 
 If you set a proxy, or bind ztorrent to a network interface (for example a VPN),
