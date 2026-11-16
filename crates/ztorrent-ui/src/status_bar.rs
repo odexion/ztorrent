@@ -12,7 +12,7 @@ impl Workspace {
     pub fn render_status_bar(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let p = Theme::get(cx).clone();
         let g = &self.state.globals;
-        let pill = || div().flex().items_center().gap(px(6.)).h(px(22.)).px(px(10.)).rounded(px(5.));
+        let pill = || div().flex().items_center().gap(px(6.)).h(px(20.)).px(px(10.)).rounded(px(5.));
         let dot = |c: Hsla| div().size(px(8.)).rounded_full().bg(c).flex_none();
 
         let dht = if g.dht_enabled {
@@ -54,7 +54,7 @@ impl Workspace {
             .flex()
             .flex_none()
             .items_center()
-            .h(px(30.))
+            .h(px(28.))
             .px(px(14.))
             .text_size(TEXT_META)
             .text_color(p.ink_dim)
@@ -63,21 +63,21 @@ impl Workspace {
             .border_color(p.line)
             .font_features(tabular())
             .child(dht)
-            .child(pill().child(div().text_color(p.ink_faint).child("Torrents:")).child(self.state.rows.len().to_string()))
+            .child(pill().child(crate::widgets::count(self.state.rows.len() as u64, "torrent", "torrents")))
             .child(div().flex_1())
             .children(self.render_update_pill(cx))
             .child(alt_pill)
             .child(
                 pill()
                     .child(icon("down", 13., p.down))
-                    .child(format!("D: {}", fmt::speed(g.download_speed, false)))
-                    .child(div().text_color(p.ink_faint).child(format!("T: {}", fmt::bytes(g.downloaded as f64, false)))),
+                    .child(fmt::speed(g.download_speed, false))
+                    .child(div().text_color(p.ink_faint).child(format!("· {}", fmt::bytes(g.downloaded as f64, false)))),
             )
             .child(
                 pill()
                     .child(icon("up", 13., p.up))
-                    .child(format!("U: {}", fmt::speed(g.upload_speed, false)))
-                    .child(div().text_color(p.ink_faint).child(format!("T: {}", fmt::bytes(g.uploaded as f64, false)))),
+                    .child(fmt::speed(g.upload_speed, false))
+                    .child(div().text_color(p.ink_faint).child(format!("· {}", fmt::bytes(g.uploaded as f64, false)))),
             )
             .child(brand)
     }

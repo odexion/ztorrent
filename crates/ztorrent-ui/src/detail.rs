@@ -2,7 +2,6 @@
 
 use crate::actions::*;
 use crate::icons::icon;
-use crate::progress::progress_bar;
 use crate::state::{HISTORY_LEN, History, Tab};
 use crate::theme::{MONO, Palette, RADIUS, ROW_H, TEXT_CAPTION, TEXT_META, Theme, tabular};
 use crate::workspace::Workspace;
@@ -18,7 +17,7 @@ fn dash(s: String) -> String {
 impl Workspace {
     pub fn render_detail(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let p = Theme::get(cx).clone();
-        let mut strip = div().flex().flex_none().items_center().gap(px(2.)).h(px(40.)).px(px(10.)).border_b_1().border_color(p.line);
+        let mut strip = div().flex().flex_none().items_center().gap(px(4.)).h(px(40.)).px(px(12.)).border_b_1().border_color(p.line);
         for tab in Tab::ALL {
             let active = self.state.tab == tab;
             strip = strip.child(
@@ -27,7 +26,7 @@ impl Workspace {
                     .flex()
                     .items_center()
                     .gap(px(6.))
-                    .h(px(28.))
+                    .h(px(26.))
                     .px(px(10.))
                     .rounded(RADIUS)
                     .text_size(TEXT_META)
@@ -35,7 +34,7 @@ impl Workspace {
                     .text_color(if active { p.ink } else { p.ink_dim })
                     .when(active, |d| d.bg(p.sel_quiet))
                     .when(!active, |d| d.hover(|s| s.text_color(p.ink).bg(p.hover)))
-                    .child(icon(tab.icon(), 15., if active { p.ink } else { p.ink_dim }))
+                    .child(icon(tab.icon(), 14., if active { p.ink } else { p.ink_dim }))
                     .child(tab.label())
                     .on_click(cx.listener(move |this, _, _, cx| {
                         this.state.tab = tab;
@@ -281,13 +280,13 @@ fn table_head(p: &Palette, cols: &[(&'static str, Pixels, bool)]) -> Div {
 
 /// A titled column of "Key:  value" lines, as General and Summary lay them out.
 fn info_grid(p: &Palette, title: &'static str, items: Vec<(&'static str, String, bool)>) -> Div {
-    let mut g = div().flex().flex_col().gap(px(7.)).min_w_0();
+    let mut g = div().flex().flex_col().gap(px(8.)).min_w_0().text_size(TEXT_META);
     for (k, v, mono) in items {
         g = g.child(
             div()
                 .flex()
                 .gap(px(12.))
-                .child(div().w(px(128.)).flex_none().text_color(p.ink_dim).child(k))
+                .child(div().w(px(118.)).flex_none().text_color(p.ink_dim).child(k))
                 .child(div().flex_1().min_w_0().truncate().when(mono, |d| d.font_family(MONO).font_features(crate::theme::plain_mono()).text_size(TEXT_META)).child(v)),
         );
     }
@@ -344,9 +343,18 @@ fn render_general(p: &Palette, r: &Row, d: Option<&Details>) -> impl IntoElement
                 .flex()
                 .items_center()
                 .gap(px(12.))
-                .mb(px(22.))
-                .child(progress_bar(p, bar_kind(r), r.done, None, px(460.), 28.))
-                .child(div().font_weight(FontWeight::MEDIUM).child(fmt::pct(r.done, 2))),
+                .mb(px(20.))
+                .child(
+                    div()
+                        .flex_1()
+                        .max_w(px(460.))
+                        .h(px(6.))
+                        .rounded(px(3.))
+                        .overflow_hidden()
+                        .bg(p.bar_track)
+                        .child(div().h_full().w(relative(if r.done.is_nan() { 0. } else { r.done.clamp(0., 1.) as f32 })).bg(crate::progress::fill(p, bar_kind(r)))),
+                )
+                .child(div().text_size(TEXT_META).font_weight(FontWeight::MEDIUM).child(fmt::pct(r.done, 2))),
         )
         .child(div().flex().gap(px(40.)).child(grid("Transfer", transfer)).child(grid("Torrent", torrent)))
 }

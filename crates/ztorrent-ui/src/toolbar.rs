@@ -1,6 +1,6 @@
 use crate::actions::{self, accel};
 use crate::icons::icon;
-use crate::theme::{CONTROL_H, RADIUS, Theme};
+use crate::theme::{CONTROL_H, FONT_SIZE, RADIUS, Theme};
 use crate::workspace::Workspace;
 use gpui::prelude::*;
 use gpui::*;
@@ -26,9 +26,7 @@ impl Workspace {
             Some(Button { act, hint: format!("{name}  ({key})"), action, enabled, active: false })
         };
         vec![
-            b("add-file", "Add Torrent", accel("O", false), Box::new(actions::AddTorrent), true),
             b("add-url", "Add Torrent from URL", accel("U", false), Box::new(actions::AddUrl), true),
-            b("globe", "Search Online", accel("F", true), Box::new(actions::SearchOnline), true),
             b("create", "Create New Torrent", accel("N", false), Box::new(actions::CreateTorrent), true),
             None,
             b("remove", "Remove", delete_key, Box::new(actions::Remove), n > 0),
@@ -64,6 +62,34 @@ impl Workspace {
             .border_b_1()
             .border_color(p.line);
 
+        // The two ways in, as words: what a new user looks for first.
+        let text_button = |id: &'static str, label: &'static str, hint: String, action: Box<dyn Action>, primary: bool| {
+            let (bg, fg, hover) = if primary { (p.accent, gpui::white(), p.accent.opacity(0.88)) } else { (p.bg, p.ink, p.hover) };
+            div()
+                .id(id)
+                .flex()
+                .flex_none()
+                .items_center()
+                .h(CONTROL_H)
+                .px(px(12.))
+                .rounded(RADIUS)
+                .bg(bg)
+                .text_color(fg)
+                .text_size(FONT_SIZE)
+                .font_weight(FontWeight::MEDIUM)
+                .when(!primary, |d| d.border_1().border_color(p.line_hard))
+                .hover(move |s| s.bg(hover))
+                .active(move |s| s.opacity(0.85))
+                .child(label)
+                .tooltip(move |window, cx| Tooltip::new(hint.clone()).build(window, cx))
+                .on_click(move |_, window, cx| window.dispatch_action(action.boxed_clone(), cx))
+        };
+        bar = bar
+            .child(text_button("add-file", "+ Add", format!("Add Torrent  ({})", accel("O", false)), Box::new(actions::AddTorrent), true))
+            .child(div().w(px(6.)))
+            .child(text_button("globe", "Search Online", format!("Search Online  ({})", accel("F", true)), Box::new(actions::SearchOnline), false))
+            .child(div().w(px(4.)));
+
         for button in self.toolbar_buttons() {
             let Some(button) = button else {
                 bar = bar.child(div().w(px(1.)).h(px(20.)).mx(px(8.)).bg(p.line));
@@ -80,7 +106,7 @@ impl Workspace {
                 .flex()
                 .items_center()
                 .justify_center()
-                .size(px(32.))
+                .size(CONTROL_H)
                 .rounded(RADIUS)
                 .bg(bg)
                 .text_color(fg)
@@ -98,7 +124,7 @@ impl Workspace {
 
         bar.child(div().flex_1()).child(
             div()
-                .w(px(200.))
+                .w(px(240.))
                 .child(Input::new(&self.search).h(CONTROL_H).prefix(icon("search", 15., p.ink_faint)).cleanable(true)),
         )
     }
