@@ -101,6 +101,9 @@ pub struct Settings {
     pub notify_on_complete: bool,
     #[serde(deserialize_with = "lenient::bool")]
     pub show_speed_in_dock: bool,
+    /// The torrent list as the old one-line table instead of two-line rows.
+    #[serde(deserialize_with = "lenient::bool")]
+    pub compact_list: bool,
     /// Session only -- never restored from disk and never written to it.
     #[serde(deserialize_with = "lenient::bool")]
     pub alt_speed_enabled: bool,
@@ -180,6 +183,7 @@ impl Default for Settings {
             confirm_on_delete: true,
             notify_on_complete: true,
             show_speed_in_dock: true,
+            compact_list: false,
             alt_speed_enabled: false,
             alt_download_rate: 100,
             alt_upload_rate: 20,

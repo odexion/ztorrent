@@ -4,7 +4,7 @@ use crate::actions::*;
 use crate::icons::icon;
 use crate::progress::progress_bar;
 use crate::theme::{Palette, ROW_H, TEXT_CAPTION, TEXT_META, Theme, tabular};
-use crate::workspace::{DraggedTorrents, Resize, Workspace};
+use crate::workspace::{Resize, Workspace};
 use gpui::prelude::*;
 use gpui::*;
 use gpui_component::native_menu::NativeMenu;
@@ -44,7 +44,8 @@ impl Workspace {
         let count = self.state.visible_rows().len();
         self.state.list_focused = self.list_focus.contains_focused(window, cx);
 
-        let body = (count > 0).then(|| {
+        let compact = self.state.settings.compact_list;
+        let body = (compact && count > 0).then(|| {
             uniform_list("torrents", count, cx.processor(|this, range: Range<usize>, _window, cx| this.render_rows(range, cx)))
                 .track_scroll(&self.list_scroll)
                 .size_full()
@@ -52,9 +53,30 @@ impl Workspace {
         // The empty state sits over the visible pane, below the header, not in
         // the scrolled area: that is as wide as every column together, and
         // centring in it put the message off to the right.
-        let empty = (count == 0).then(|| {
-            div().absolute().top(px(HEADER_H)).left_0().right_0().bottom_0().child(self.render_empty(&p))
-        });
+        let top = if compact { HEADER_H } else { crate::rows::BAR_H };
+        let empty = (count == 0).then(|| div().absolute().top(px(top)).left_0().right_0().bottom_0().child(self.render_empty(&p)));
+        let content = if compact {
+            div()
+                .id("grid-x")
+                .flex_1()
+                .min_h_0()
+                .overflow_x_scroll()
+                .child(
+                    div()
+                        .flex()
+                        .flex_col()
+                        .h_full()
+                        .min_w(px(total))
+                        .w_full()
+                        .child(self.render_header(&p, &cols, cx))
+                        .child(div().flex_1().min_h_0().pt(px(4.)).children(body)),
+                )
+                .into_any_element()
+        } else {
+            let bar = self.render_list_bar(&p, cx).into_any_element();
+            let list = self.render_tall_list(cx);
+            div().flex().flex_col().flex_1().min_h_0().child(bar).child(div().flex_1().min_h_0().children(list)).into_any_element()
+        };
 
         div()
             .id("grid")
@@ -81,6 +103,7 @@ impl Workspace {
             .on_action(cx.listener(|this, _: &DeleteDataKey, window, cx| this.remove(true, window, cx)))
             .on_action(cx.listener(|this, _: &TogglePause, _, cx| this.toggle_pause(cx)))
             .on_action(cx.listener(|this, _: &EnterKey, _, cx| this.reveal_selected(cx)))
+            .on_action(cx.listener(|this, a: &crate::widgets::PickOption, _, cx| this.pick_list_option(a, cx)))
             .on_mouse_down(
                 MouseButton::Left,
                 cx.listener(|this, _, window, cx| {
@@ -89,23 +112,7 @@ impl Workspace {
                     this.sync_selection(cx);
                 }),
             )
-            .child(
-                div()
-                    .id("grid-x")
-                    .flex_1()
-                    .min_h_0()
-                    .overflow_x_scroll()
-                    .child(
-                        div()
-                            .flex()
-                            .flex_col()
-                            .h_full()
-                            .min_w(px(total))
-                            .w_full()
-                            .child(self.render_header(&p, &cols, cx))
-                            .child(div().flex_1().min_h_0().pt(px(4.)).children(body)),
-                    ),
-            )
+            .child(content)
             .children(empty)
     }
 
@@ -235,8 +242,6 @@ impl Workspace {
             .map(|(k, r)| {
                 let ix = range.start + k;
                 let selected = self.state.is_selected(&r.id);
-                let drag_ids = if selected { self.state.selection.clone() } else { vec![r.id.clone()] };
-                let chip = if drag_ids.len() > 1 { format!("{} torrents", drag_ids.len()) } else { r.name.clone() };
                 let hover = p.hover;
                 let mut row = div()
                     .id(("row", ix))
@@ -250,33 +255,7 @@ impl Workspace {
                 for col in &cols {
                     row = row.child(self.render_cell(&p, col, &r, ix));
                 }
-                let id = r.id.clone();
-                let id_up = r.id.clone();
-                let id_menu = r.id.clone();
-                let id_click = r.id.clone();
-                row.on_mouse_down(
-                    MouseButton::Left,
-                    cx.listener(move |this, ev: &MouseDownEvent, window, cx| {
-                        window.focus(&this.list_focus, cx);
-                        this.row_mouse_down(&id, ev, cx);
-                        cx.stop_propagation();
-                    }),
-                )
-                .on_mouse_up(MouseButton::Left, cx.listener(move |this, _: &MouseUpEvent, _, cx| this.row_mouse_up(&id_up, cx)))
-                .on_mouse_down(
-                    MouseButton::Right,
-                    cx.listener(move |this, ev: &MouseDownEvent, window, cx| {
-                        window.focus(&this.list_focus, cx);
-                        this.row_context_menu(&id_menu, ev.position, window, cx);
-                        cx.stop_propagation();
-                    }),
-                )
-                .on_click(cx.listener(move |this, ev: &ClickEvent, _, cx| {
-                    if ev.click_count() == 2 {
-                        this.reveal(id_click.clone(), None, cx);
-                    }
-                }))
-                .on_drag(DraggedTorrents { ids: drag_ids }, move |_, _, _, cx| cx.new(|_| DragChip(chip.clone().into())))
+                self.wire_row(row, &r, selected, cx)
                 .into_any_element()
             })
             .collect()

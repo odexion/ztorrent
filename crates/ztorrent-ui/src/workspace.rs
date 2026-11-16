@@ -686,6 +686,8 @@ impl Render for Workspace {
             .on_action(cx.listener(|this, _: &ShowLogger, _, cx| this.show_tab(crate::state::Tab::Logger, cx)))
             .on_action(cx.listener(|_, _: &ToggleAltSpeed, _, cx| send(cx, Command::ToggleAltSpeed)))
             .on_action(cx.listener(|this, _: &CheckForUpdates, window, cx| this.check_for_updates(window, cx)))
+            .on_action(cx.listener(|_, _: &ViewRows, _, cx| send(cx, Command::SetSettings(patch("compactList", false)))))
+            .on_action(cx.listener(|_, _: &ViewCompact, _, cx| send(cx, Command::SetSettings(patch("compactList", true)))))
             .on_action(cx.listener(|this, _: &ThemeLight, _, cx| this.set_theme("classic", cx)))
             .on_action(cx.listener(|this, _: &ThemeDark, _, cx| this.set_theme("graphite", cx)))
             .on_action(cx.listener(|this, _: &ToggleTheme, _, cx| {

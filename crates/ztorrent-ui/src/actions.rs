@@ -36,6 +36,8 @@ actions!(
         ThemeLight,
         ThemeDark,
         ToggleTheme,
+        ViewRows,
+        ViewCompact,
         SampleTorrents,
         Minimize,
         Zoom,
