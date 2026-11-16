@@ -14,11 +14,12 @@ use gpui_component::checkbox::Checkbox;
 use gpui_component::input::{Input, InputEvent, InputState, Textarea, TextareaState};
 use gpui_component::native_menu::NativeMenu;
 use gpui_component::{Disableable, Sizable, WindowExt};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::PathBuf;
 use std::rc::Rc;
 use ztorrent_core::command::*;
 use ztorrent_core::egress::suppressed_in_sheet;
+use ztorrent_core::episode::{QUALITIES, episode_tag, quality};
 use ztorrent_core::settings::{SettingsPatch, patch};
 use ztorrent_core::*;
 
@@ -703,6 +704,16 @@ pub struct SearchSheet {
     notes: Vec<String>,
     sort: SortBy,
     descending: bool,
+    /// Narrow the results shown to one season, episode or picture quality.
+    season: Option<u32>,
+    episode: Option<u32>,
+    quality: Option<&'static str>,
+    /// The results ticked for adding, by their link.
+    selected: BTreeSet<String>,
+    /// The result a shift-click ticks from, by its link.
+    anchor: Option<String>,
+    /// The ticked results are being added.
+    adding: bool,
     busy: bool,
     searched: bool,
     /// Bumped by every search, so a slow answer to an earlier one is ignored.
@@ -749,6 +760,12 @@ pub fn open_search<V: 'static>(window: &mut Window, cx: &mut Context<V>) {
             notes: Vec::new(),
             sort: SortBy::Seeds,
             descending: true,
+            season: None,
+            episode: None,
+            quality: None,
+            selected: BTreeSet::new(),
+            anchor: None,
+            adding: false,
             busy: false,
             searched: false,
             generation: 0,
@@ -815,6 +832,9 @@ impl SearchSheet {
         self.searched = true;
         self.results.clear();
         self.notes.clear();
+        self.selected.clear();
+        self.anchor = None;
+        (self.season, self.episode, self.quality) = (None, None, None);
         cx.notify();
         let rx = ask(cx, |reply| Command::Search { query, options, reply });
         cx.spawn_in(window, async move |this, cx| {
@@ -833,18 +853,6 @@ impl SearchSheet {
         .detach();
     }
 
-    fn sort_by(&mut self, by: SortBy, cx: &mut Context<Self>) {
-        if self.sort == by {
-            self.descending = !self.descending;
-        } else {
-            self.sort = by;
-            // Most seeded and largest first; names and sources A to Z.
-            self.descending = matches!(by, SortBy::Seeds | SortBy::Size);
-        }
-        self.sort_results();
-        cx.notify();
-    }
-
     fn sort_results(&mut self) {
         let by = self.sort;
         // Stable, so hits that tie keep the order their source ranked them in.
@@ -857,6 +865,125 @@ impl SearchSheet {
             };
             if self.descending { o.reverse() } else { o }
         });
+    }
+
+    /// The results the filters let through, by their place in the list.
+    fn visible(&self) -> Vec<usize> {
+        let numbered = self.season.is_some() || self.episode.is_some();
+        (0..self.results.len())
+            .filter(|&i| {
+                let title = &self.results[i].title;
+                (!numbered || episode_tag(title).matches(self.season, self.episode)) && self.quality.is_none_or(|q| quality(title) == Some(q))
+            })
+            .collect()
+    }
+
+    /// The seasons, or the episodes of the chosen season, that the results
+    /// hold, for the filter menus.
+    fn numbers_found(&self, episodes: bool) -> Vec<u32> {
+        let mut found = BTreeSet::new();
+        for r in &self.results {
+            let tag = episode_tag(&r.title);
+            let range = if episodes {
+                if !tag.matches(self.season, None) {
+                    continue;
+                }
+                tag.episodes
+            } else {
+                tag.seasons
+            };
+            if let Some((a, b)) = range {
+                // A pack named S01-S99 is not worth 99 entries.
+                found.extend(a..=b.min(a + 40));
+            }
+        }
+        found.into_iter().collect()
+    }
+
+    /// A click ticks or unticks a result; with Shift it ticks every result
+    /// from the last one clicked; a double click opens it in the Add sheet.
+    fn click_result(&mut self, i: usize, ev: &ClickEvent, window: &mut Window, cx: &mut Context<Self>) {
+        let link = self.results[i].link.clone();
+        if ev.click_count() == 2 {
+            window.close_dialog(cx);
+            open_add(window, cx, TorrentSource::parse(&link), None);
+            return;
+        }
+        let visible = self.visible();
+        let from = self.anchor.as_ref().and_then(|a| visible.iter().position(|&v| self.results[v].link == *a));
+        match (ev.modifiers().shift, from, visible.iter().position(|&v| v == i)) {
+            (true, Some(a), Some(b)) => {
+                for &v in &visible[a.min(b)..=a.max(b)] {
+                    self.selected.insert(self.results[v].link.clone());
+                }
+            }
+            _ => {
+                if !self.selected.remove(&link) {
+                    self.selected.insert(link.clone());
+                }
+            }
+        }
+        self.anchor = Some(link);
+        cx.notify();
+    }
+
+    /// Adds every ticked result to the default folder, as the preferences say.
+    /// One alone goes through the Add sheet, where its files can be chosen.
+    fn add_selected(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let links: Vec<String> = self.results.iter().filter(|r| self.selected.contains(&r.link)).map(|r| r.link.clone()).collect();
+        if links.is_empty() || self.adding {
+            return;
+        }
+        if let [link] = links.as_slice() {
+            window.close_dialog(cx);
+            open_add(window, cx, TorrentSource::parse(link), None);
+            return;
+        }
+        let save_path = self.settings.offered_save_path().to_string();
+        let paused = !self.settings.start_torrents_automatically;
+        let replies: Vec<_> = links
+            .iter()
+            .map(|link| {
+                let options = AddOptions { save_path: Some(save_path.clone()), paused, ..Default::default() };
+                ask(cx, |reply| Command::Add { source: TorrentSource::parse(link), options, reply: Some(reply) })
+            })
+            .collect();
+        self.adding = true;
+        self.notes.clear();
+        cx.notify();
+        cx.spawn_in(window, async move |this, cx| {
+            let mut outcomes = Vec::new();
+            for rx in replies {
+                outcomes.push(rx.await.unwrap_or_else(|_| Err("the engine is not running".into())));
+            }
+            let _ = this.update_in(cx, |this, window, cx| {
+                this.adding = false;
+                let (mut added, mut already, mut failed) = (0, 0, Vec::new());
+                for (link, outcome) in links.iter().zip(outcomes) {
+                    match outcome {
+                        Ok(AddOutcome::Added(_)) => added += 1,
+                        Ok(AddOutcome::Duplicate(_)) => already += 1,
+                        Err(err) => {
+                            let title = this.results.iter().find(|r| r.link == *link).map_or(link.clone(), |r| r.title.clone());
+                            failed.push(format!("{title}: {err}"));
+                            continue;
+                        }
+                    }
+                    this.selected.remove(link);
+                }
+                if already == 0 && failed.is_empty() {
+                    return window.close_dialog(cx);
+                }
+                let plural = |n: usize| if n == 1 { "" } else { "s" };
+                let mut summary = format!("Added {added} torrent{}.", plural(added));
+                if already > 0 {
+                    summary.push_str(&format!(" {already} {} already in your list.", if already == 1 { "was" } else { "were" }));
+                }
+                this.notes = std::iter::once(summary).chain(failed.into_iter().map(|f| format!("Could not add {f}"))).collect();
+                cx.notify();
+            });
+        })
+        .detach();
     }
 
     // ------------------------------------------------------ source editor
@@ -1363,87 +1490,295 @@ impl SearchSheet {
     }
 }
 
+/// Opens a native menu of `options` from a click on `el`; the choice arrives
+/// as a [`PickOption`] for `field`, as from [`dropdown`].
+fn with_menu(el: Stateful<Div>, field: &'static str, options: Vec<(String, String)>, selected: String, sheet: &FocusHandle) -> Stateful<Div> {
+    let sheet = sheet.clone();
+    el.cursor_pointer().on_mouse_down(MouseButton::Left, move |ev, window, cx| {
+        window.focus(&sheet, cx);
+        let mut menu = NativeMenu::new();
+        for (value, label) in &options {
+            menu = menu.menu_with_check(label.clone(), *value == selected, Box::new(PickOption { field: field.into(), value: value.clone() }));
+        }
+        menu.show(ev.position, window, cx);
+        cx.stop_propagation();
+    })
+}
+
+/// A filter as a pill: set, it names its value and carries an × that clears
+/// it; unset, a dashed "+ Season". A click opens the menu of choices.
+fn filter_chip(p: &Palette, field: &'static str, name: &str, value: Option<String>, options: Vec<(String, String)>, sheet: &FocusHandle, cx: &mut Context<SearchSheet>) -> Stateful<Div> {
+    let selected = options.iter().find(|(_, l)| Some(l) == value.as_ref()).map(|(v, _)| v.clone()).unwrap_or_default();
+    let mut options = options;
+    options.insert(0, (String::new(), format!("Any {}", name.to_lowercase())));
+    let chip = div()
+        .id(SharedString::from(format!("chip-{field}")))
+        .flex()
+        .flex_none()
+        .items_center()
+        .gap(px(6.))
+        .h(px(24.))
+        .px(px(10.))
+        .rounded_full()
+        .text_size(px(12.));
+    let chip = match value {
+        Some(v) => {
+            let (fg, hover) = (p.accent, p.hover);
+            chip.bg(p.accent_soft).text_color(fg).child(v).child(
+                div()
+                    .id(SharedString::from(format!("clear-{field}")))
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .size(px(14.))
+                    .rounded_full()
+                    .hover(move |s| s.bg(hover))
+                    .child("×")
+                    .on_mouse_down(MouseButton::Left, cx.listener(move |this, _, _, cx| {
+                        this.set_filter(field, "");
+                        cx.stop_propagation();
+                        cx.notify();
+                    })),
+            )
+        }
+        None => {
+            let hover = p.hover;
+            chip.border_1().border_dashed().border_color(p.line_hard).text_color(p.ink_dim).hover(move |s| s.bg(hover)).child(format!("+ {name}"))
+        }
+    };
+    with_menu(chip, field, options, selected, sheet)
+}
+
+const SORTS: [(&str, &str); 5] = [("seeds", "Most seeds"), ("size", "Largest"), ("small", "Smallest"), ("name", "Name"), ("source", "Source")];
+
+impl SearchSheet {
+    /// A choice from one of the filter or sort menus; "" clears a filter.
+    fn set_filter(&mut self, field: &str, value: &str) {
+        match field {
+            "season" => {
+                self.season = value.parse().ok();
+                // The episode menu lists the chosen season's episodes.
+                self.episode = None;
+            }
+            "episode" => self.episode = value.parse().ok(),
+            "quality" => self.quality = QUALITIES.iter().copied().find(|q| *q == value),
+            "sort" => {
+                (self.sort, self.descending) = match value {
+                    "size" => (SortBy::Size, true),
+                    "small" => (SortBy::Size, false),
+                    "name" => (SortBy::Name, false),
+                    "source" => (SortBy::Source, false),
+                    _ => (SortBy::Seeds, true),
+                };
+                self.sort_results();
+            }
+            _ => {}
+        }
+    }
+
+    fn sort_key(&self) -> &'static str {
+        match (self.sort, self.descending) {
+            (SortBy::Size, true) => "size",
+            (SortBy::Size, false) => "small",
+            (SortBy::Name, _) => "name",
+            (SortBy::Source, _) => "source",
+            (SortBy::Seeds, _) => "seeds",
+        }
+    }
+
+    /// One result: a tick box, the name, and under it how well seeded it is,
+    /// its size, where it came from and what season or quality it is.
+    fn render_result(&self, p: &Palette, i: usize, cx: &mut Context<Self>) -> Stateful<Div> {
+        let r = &self.results[i];
+        let on = self.selected.contains(&r.link);
+        let full = format!("{}\n{}", r.title, r.source);
+        let health = match r.seeders {
+            Some(n) if n >= 5 => p.ok,
+            Some(n) if n >= 1 => p.warn,
+            _ => p.ink_faint,
+        };
+        let count = |n: u32, one: &str, many: &str| format!("{n} {}", if n == 1 { one } else { many });
+        let swarm = match (r.seeders, r.leechers) {
+            (Some(s), Some(l)) => format!("{} · {}", count(s, "seed", "seeds"), count(l, "peer", "peers")),
+            (Some(s), None) => count(s, "seed", "seeds"),
+            _ => "Seeds unknown".to_string(),
+        };
+        let pill = |text: String| div().px(px(6.)).rounded(px(4.)).bg(p.sunken).text_color(p.ink_dim).child(text);
+        let hover = p.hover;
+        div()
+            .id(("hit", i))
+            .flex()
+            .items_center()
+            .gap(px(12.))
+            .px(px(8.))
+            .py(px(8.))
+            .rounded(RADIUS)
+            .cursor_pointer()
+            .when(on, |d| d.bg(p.accent_soft))
+            .when(!on, |d| d.hover(move |s| s.bg(hover)))
+            .on_click(cx.listener(move |this, ev: &ClickEvent, window, cx| this.click_result(i, ev, window, cx)))
+            .child(div().flex_none().child(Checkbox::new(("tick", i)).checked(on).on_click(cx.listener(move |this, on: &bool, _, cx| {
+                let link = this.results[i].link.clone();
+                if *on {
+                    this.selected.insert(link.clone());
+                } else {
+                    this.selected.remove(&link);
+                }
+                this.anchor = Some(link);
+                cx.stop_propagation();
+                cx.notify();
+            }))))
+            .child(
+                div()
+                    .flex_1()
+                    .min_w_0()
+                    .flex()
+                    .flex_col()
+                    .gap(px(3.))
+                    .child(
+                        div()
+                            .id(("title", i))
+                            .truncate()
+                            .font_weight(FontWeight::MEDIUM)
+                            .tooltip(move |window, cx| gpui_component::tooltip::Tooltip::new(full.clone()).build(window, cx))
+                            .child(r.title.clone()),
+                    )
+                    .child(
+                        div()
+                            .flex()
+                            .items_center()
+                            .gap(px(10.))
+                            .text_size(px(12.))
+                            .text_color(p.ink_dim)
+                            .child(div().flex().flex_none().items_center().gap(px(5.)).child(div().size(px(7.)).rounded_full().bg(health)).child(swarm))
+                            .when(r.size > 0, |d| d.child(div().flex_none().font_features(tabular()).child(fmt::bytes(r.size as f64, true))))
+                            .child(div().min_w_0().truncate().child(r.source.clone()))
+                            .children(episode_tag(&r.title).label().map(pill))
+                            .children(quality(&r.title).map(|q| pill(q.to_string()))),
+                    ),
+            )
+            .child(Button::new(("add", i)).label("Add…").small().on_click(cx.listener(move |this, _, window, cx| {
+                cx.stop_propagation();
+                let link = this.results[i].link.clone();
+                window.close_dialog(cx);
+                open_add(window, cx, TorrentSource::parse(&link), None);
+            })))
+    }
+
+    /// The bar that appears once results are ticked: how many, how large,
+    /// where they go, and the button that adds them.
+    fn render_selection(&self, p: &Palette, cx: &mut Context<Self>) -> Option<Div> {
+        let ticked = self.selected.len();
+        if ticked == 0 {
+            return None;
+        }
+        let size: u64 = self.results.iter().filter(|r| self.selected.contains(&r.link)).map(|r| r.size).sum();
+        let folder = self.settings.offered_save_path().to_string();
+        let folder = match std::env::var("HOME") {
+            Ok(home) if !home.is_empty() && folder.starts_with(&home) => format!("~{}", &folder[home.len()..]),
+            _ => folder,
+        };
+        let mut what = format!("{ticked} selected");
+        if size > 0 {
+            what.push_str(&format!(" · {}", fmt::bytes(size as f64, true)));
+        }
+        if ticked > 1 {
+            what.push_str(&format!(" → {folder}"));
+        }
+        let label = if ticked == 1 { "Add…".to_string() } else { format!("Add {ticked} Torrents") };
+        Some(
+            div()
+                .flex()
+                .items_center()
+                .gap(px(8.))
+                .mt(px(10.))
+                .py(px(8.))
+                .px(px(12.))
+                .rounded(RADIUS)
+                .bg(p.sunken)
+                .border_1()
+                .border_color(p.line)
+                .child(div().flex_1().min_w_0().truncate().child(what))
+                .child(Button::new("clear-selection").label("Clear").small().ghost().on_click(cx.listener(|this, _, _, cx| {
+                    this.selected.clear();
+                    cx.notify();
+                })))
+                .child(Button::new("add-selected").label(label).small().primary().loading(self.adding).on_click(cx.listener(|this, _, window, cx| this.add_selected(window, cx)))),
+        )
+    }
+}
+
 impl Render for SearchSheet {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let p = Theme::get(cx).clone();
         // What is left of the window once the dialog's own title, search row and
         // footer are drawn, shared between the settings panel and the results.
-        // The sheet sits ~120px down the window; its title, search row, status
-        // lines, table header and footer take ~340px more.
-        let room = (f32::from(window.viewport_size().height) - 120. - 340. - 22. * self.notes.len() as f32).max(160.);
+        // The sheet sits ~120px down the window; its title, search row, filter
+        // row and footer take ~290px more, and the selection bar ~50px.
+        let chrome = 290. + if self.selected.is_empty() { 0. } else { 50. };
+        let room = (f32::from(window.viewport_size().height) - 120. - chrome - 22. * self.notes.len() as f32).max(160.);
         let (panel_h, results_h) = if self.show_settings && !self.results.is_empty() { (room * 0.6, room * 0.4) } else { (room, room) };
+        let visible = self.visible();
         let status = if self.busy {
             Some("Searching…".to_string())
         } else if self.searched && self.results.is_empty() && self.notes.is_empty() {
             Some("Nothing found. Try fewer words, another category, or more sources.".to_string())
-        } else if self.searched && !self.results.is_empty() {
-            Some(format!("{} results", self.results.len()))
         } else {
             None
         };
-        let mut list = div().flex().flex_col();
-        for (i, r) in self.results.iter().enumerate() {
-            let seeds = r.seeders.map(|n| n.to_string()).unwrap_or_else(|| "–".into());
-            let peers = r.leechers.map(|n| n.to_string()).unwrap_or_else(|| "–".into());
-            let full = format!("{}\n{}", r.title, r.source);
-            list = list.child(
-                div()
-                    .id(("hit", i))
-                    .flex()
-                    .items_center()
-                    .gap(px(10.))
-                    .min_h(px(34.))
-                    .py(px(5.))
-                    .px(px(10.))
-                    .border_b_1()
-                    .border_color(p.line)
-                    .tooltip(move |window, cx| gpui_component::tooltip::Tooltip::new(full.clone()).build(window, cx))
-                    // Long release names wrap onto a second line rather than vanish.
-                    .child(div().flex_1().min_w_0().line_clamp(2).child(r.title.clone()))
-                    .child(div().w(px(96.)).flex_none().truncate().text_color(p.ink_faint).child(r.source.clone()))
-                    .child(div().w(px(76.)).flex_none().flex().justify_end().font_features(tabular()).child(fmt::bytes(r.size as f64, true)))
-                    .child(div().w(px(48.)).flex_none().flex().justify_end().font_features(tabular()).child(seeds))
-                    .child(div().w(px(48.)).flex_none().flex().justify_end().font_features(tabular()).text_color(p.ink_dim).child(peers))
-                    .child(Button::new(("add", i)).label("Add").small().on_click(cx.listener(move |this, _, window, cx| {
-                        let link = this.results[i].link.clone();
-                        window.close_dialog(cx);
-                        open_add(window, cx, TorrentSource::parse(&link), None);
-                    }))),
-            );
+
+        let mut list = div().flex().flex_col().gap(px(2.)).pt(px(4.));
+        for &i in &visible {
+            list = list.child(self.render_result(&p, i, cx));
         }
-        let (sort, descending) = (self.sort, self.descending);
-        let heading = |text: &'static str, by: SortBy, w: Option<f32>, right: bool| {
-            let arrow = if sort == by { if descending { " ▼" } else { " ▲" } } else { "" };
-            let hover = p.ink;
+        if visible.is_empty() && !self.results.is_empty() {
+            list = list.child(div().p(px(14.)).text_color(p.ink_faint).child("No results match the filters."));
+        }
+
+        // The filter row: tick all, the season, episode and quality pills, and
+        // how many are shown, in what order.
+        let filters = (!self.results.is_empty()).then(|| {
+            let all_ticked = !visible.is_empty() && visible.iter().all(|&i| self.selected.contains(&self.results[i].link));
+            let shown_links: Vec<String> = visible.iter().map(|&i| self.results[i].link.clone()).collect();
+            let numbers = |ns: Vec<u32>, word: &str| ns.into_iter().map(|n| (n.to_string(), format!("{word} {n}"))).collect::<Vec<_>>();
+            let seasons = numbers(self.numbers_found(false), "Season");
+            let episodes = numbers(self.numbers_found(true), "Episode");
+            let qualities = QUALITIES.iter().filter(|q| self.results.iter().any(|r| quality(&r.title) == Some(**q))).map(|q| (q.to_string(), q.to_string())).collect();
+            let count = if visible.len() == self.results.len() { format!("{} results", self.results.len()) } else { format!("{} of {}", visible.len(), self.results.len()) };
+            let sort_label = SORTS.iter().find(|(k, _)| *k == self.sort_key()).map_or("", |(_, l)| l).to_lowercase();
+            let sorts = SORTS.iter().map(|(k, l)| (k.to_string(), l.to_string())).collect();
+            let ink = p.ink;
             div()
-                .id(text)
                 .flex()
-                .when(right, |d| d.justify_end())
-                .map(|d| match w {
-                    Some(w) => d.w(px(w)).flex_none(),
-                    None => d.flex_1(),
-                })
-                .cursor_pointer()
-                .hover(move |s| s.text_color(hover))
-                .child(format!("{text}{arrow}"))
-                .on_click(cx.listener(move |this, _, _, cx| this.sort_by(by, cx)))
-        };
-        let header = div()
-            .flex()
-            .items_center()
-            .gap(px(10.))
-            .h(px(26.))
-            .px(px(10.))
-            .border_b_1()
-            .border_color(p.line)
-            .text_size(px(11.))
-            .text_color(p.ink_faint)
-            .child(heading("NAME", SortBy::Name, None, false))
-            .child(heading("SOURCE", SortBy::Source, Some(96.), false))
-            .child(heading("SIZE", SortBy::Size, Some(76.), true))
-            .child(heading("SEEDS", SortBy::Seeds, Some(48.), true))
-            .child(div().w(px(48.)).flex_none().flex().justify_end().child("PEERS"))
-            .child(div().w(px(52.)).flex_none());
+                .items_center()
+                .gap(px(8.))
+                .mt(px(12.))
+                .mb(px(6.))
+                .px(px(8.))
+                .text_size(px(12.))
+                .child(div().flex_none().mr(px(4.)).child(Checkbox::new("tick-all").checked(all_ticked).on_click(cx.listener(move |this, on: &bool, _, cx| {
+                    for link in &shown_links {
+                        if *on {
+                            this.selected.insert(link.clone());
+                        } else {
+                            this.selected.remove(link);
+                        }
+                    }
+                    cx.notify();
+                }))))
+                .child(filter_chip(&p, "season", "Season", self.season.map(|s| format!("Season {s}")), seasons, &self.focus, cx))
+                .child(filter_chip(&p, "episode", "Episode", self.episode.map(|e| format!("Episode {e}")), episodes, &self.focus, cx))
+                .child(filter_chip(&p, "quality", "Quality", self.quality.map(String::from), qualities, &self.focus, cx))
+                .child(div().flex_1())
+                .child(div().flex_none().text_color(p.ink_dim).child(format!("{count} ·")))
+                .child(with_menu(
+                    div().id("sort").flex_none().ml(px(-4.)).text_color(p.ink_dim).hover(move |s| s.text_color(ink)).child(format!("sorted by {sort_label} ▾")),
+                    "sort",
+                    sorts,
+                    self.sort_key().to_string(),
+                    &self.focus,
+                ))
+        });
 
         let category = self.settings.search_category.clone();
         let category_label = SEARCH_CATEGORIES.iter().find(|(id, _)| *id == category).map_or("All", |(_, n)| n).to_string();
@@ -1453,6 +1788,7 @@ impl Render for SearchSheet {
         let hover_bg = p.hover;
         let welcome = self.render_welcome(&p, cx);
         let settings = settings_on.then(|| self.render_settings(&p, cx));
+        let selection = self.render_selection(&p, cx);
 
         div()
             .id("search-sheet")
@@ -1467,7 +1803,10 @@ impl Render for SearchSheet {
                         this.set("searchMaxResults", n, cx);
                     }
                 }
-                _ => {}
+                field => {
+                    this.set_filter(field, &a.value);
+                    cx.notify();
+                }
             }))
             .child(title(&p, "Search Online"))
             .child(
@@ -1475,7 +1814,7 @@ impl Render for SearchSheet {
                     .flex()
                     .items_center()
                     .gap(px(8.))
-                    .child(div().flex_1().child(Input::new(&self.query)))
+                    .child(div().flex_1().child(Input::new(&self.query).prefix(icon("search", 14., p.ink_faint))))
                     .child(div().w(px(120.)).child(dropdown(&p, "category", category_label, "category", categories, category, &self.focus)))
                     .child(
                         div()
@@ -1511,22 +1850,16 @@ impl Render for SearchSheet {
             .children(welcome)
             .children(status.map(|s| div().mt(px(10.)).text_color(p.ink_dim).child(s)))
             .children(self.notes.iter().map(|n| div().mt(px(6.)).text_color(p.warn).child(n.clone())))
-            .children((!self.results.is_empty()).then(|| {
-                div()
-                    .mt(px(10.))
-                    .border_1()
-                    .border_color(p.line)
-                    .rounded(RADIUS)
-                    .child(header)
-                    .child(div().id("search-results").max_h(px(results_h)).overflow_y_scroll().child(list))
-            }))
+            .children(filters)
+            .children((!self.results.is_empty()).then(|| div().id("search-results").border_t_1().border_color(p.line).max_h(px(results_h)).overflow_y_scroll().child(list)))
+            .children(selection)
             .child(
                 div()
                     .flex()
                     .items_center()
                     .gap(px(16.))
-                    .mt(px(16.))
-                    .pt(px(14.))
+                    .mt(px(14.))
+                    .pt(px(12.))
                     .border_t_1()
                     .border_color(p.line)
                     .child(div().flex_1().min_w_0().text_size(px(11.)).text_color(p.ink_faint).child(RESPONSIBILITY))

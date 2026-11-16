@@ -8,6 +8,7 @@
 pub mod columns;
 pub mod command;
 pub mod egress;
+pub mod episode;
 pub mod fmt;
 pub mod launch;
 pub mod model;
