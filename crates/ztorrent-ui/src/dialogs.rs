@@ -7,7 +7,7 @@ use crate::actions::accel;
 use crate::bridge::{ask, send};
 use crate::icons::icon;
 use crate::widgets::{count, dot, dropdown, filter_pill, list_row, meta_line, seed_health, selection_bar, tag, tilde, with_menu};
-use crate::theme::{CONTROL_H, CONTROL_SM_H, MONO, Palette, RADIUS, TEXT_CAPTION, TEXT_META, TEXT_TITLE, Theme, tabular};
+use crate::theme::{CONTROL_H, CONTROL_SM_H, MONO, NAV_ROW_H, Palette, RADIUS, RADIUS_LG, TEXT_CAPTION, TEXT_META, TEXT_TITLE, Theme, tabular};
 use gpui::prelude::*;
 use gpui::*;
 use gpui_component::button::{Button, ButtonVariants};
@@ -98,20 +98,48 @@ fn frow(p: &Palette, label: &str, content: impl IntoElement) -> Div {
         .items_center()
         .gap(px(12.))
         .mb(px(10.))
-        .child(div().w(px(168.)).flex_none().text_color(p.ink_dim).child(label.to_string()))
+        .child(div().w(px(LABEL_W)).flex_none().text_color(p.ink_dim).child(label.trim_end_matches(':').to_string()))
         .child(div().flex_1().min_w_0().child(content))
 }
 
+/// How wide a form row's label is; fields start after it and a gap.
+const LABEL_W: f32 = 140.;
+
+/// A titled group of settings in a light rounded box, as macOS Settings lays
+/// them out.
+fn card(p: &Palette, title: &str, body: Div) -> Div {
+    div()
+        .mb(px(18.))
+        .child(legend(p, title))
+        .child(div().px(px(14.)).pt(px(12.)).pb(px(2.)).rounded(RADIUS_LG).border_1().border_color(p.line).child(body))
+}
+
+/// A quiet line of explanation under a tick box, lined up with its text.
+fn note(p: &Palette, text: &str) -> Div {
+    div().ml(px(24.)).mt(px(-6.)).mb(px(10.)).text_size(TEXT_META).text_color(p.ink_faint).child(text.to_string())
+}
+
 fn hint(p: &Palette, text: &str) -> Div {
-    div().ml(px(180.)).mt(px(-4.)).mb(px(10.)).text_size(TEXT_META).text_color(p.ink_faint).child(text.to_string())
+    div().ml(px(LABEL_W + 12.)).mt(px(-4.)).mb(px(10.)).text_size(TEXT_META).text_color(p.ink_faint).child(text.to_string())
 }
 
 fn error_line(p: &Palette, error: &Option<String>) -> Option<Div> {
     error.as_ref().map(|e| div().mt(px(6.)).text_color(p.err).child(e.clone()))
 }
 
-fn footer(p: &Palette, extra: Option<AnyElement>) -> Div {
-    div().flex().items_center().gap(px(8.)).mt(px(16.)).pt(px(14.)).border_t_1().border_color(p.line).children(extra).child(div().flex_1())
+/// The row of buttons that ends a sheet, with the keys that do the same on
+/// the left.
+fn footer(p: &Palette, keys: &str) -> Div {
+    div()
+        .flex()
+        .items_center()
+        .gap(px(8.))
+        .mt(px(16.))
+        .pt(px(14.))
+        .border_t_1()
+        .border_color(p.line)
+        .child(div().text_size(TEXT_CAPTION).text_color(p.ink_faint).child(keys.to_string()))
+        .child(div().flex_1())
 }
 
 fn text_input(window: &mut Window, cx: &mut App, value: &str, placeholder: &str) -> Entity<InputState> {
@@ -235,7 +263,7 @@ impl Render for PromptSheet {
             .child(div().mb(px(6.)).text_color(p.ink_dim).child(self.label.clone()))
             .child(Input::new(&self.input).h(CONTROL_H))
             .child(
-                footer(&p, None)
+                footer(&p, "Esc to cancel · ↵ to confirm")
                     .child(button("cancel").label("Cancel").on_click(|_, window, cx| window.close_dialog(cx)))
                     .child(div().debug_selector(|| "prompt-ok".into()).child(button("ok").label("OK").primary().on_click(cx.listener(|this, _, window, cx| this.submit(window, cx))))),
             )
@@ -268,7 +296,7 @@ impl Render for NoticeSheet {
             .child(title(&p, self.title.clone()))
             .child(div().text_color(p.err).child(self.message.clone()))
             .child(div().mt(px(6.)).text_color(p.ink_dim).child(self.detail.clone()))
-            .child(footer(&p, None).child(div().debug_selector(|| "close".into()).child(button("close").label("Close").on_click(|_, window, cx| window.close_dialog(cx)))))
+            .child(footer(&p, "Esc or ↵ to close").child(div().debug_selector(|| "close".into()).child(button("close").label("Close").on_click(|_, window, cx| window.close_dialog(cx)))))
     }
 }
 
@@ -422,38 +450,69 @@ impl Render for AddSheet {
             .into_any_element()
         } else {
             let all = self.checked.iter().all(|c| *c);
-            let mut table = div().flex().flex_col().child(
-                div()
-                    .flex()
-                    .items_center()
-                    .h(CONTROL_H)
-                    .border_b_1()
-                    .border_color(p.line)
-                    .text_size(TEXT_META)
-                    .font_weight(FontWeight::MEDIUM)
-                    .text_color(p.ink_dim)
-                    .child(div().w(px(34.)).pl(px(10.)).child(Checkbox::new("all").checked(all).on_click(cx.listener(|this, on: &bool, _, cx| {
-                        this.checked.iter_mut().for_each(|c| *c = *on);
-                        cx.notify();
-                    }))))
-                    .child(div().flex_1().child("Name"))
-                    .child(div().w(px(88.)).pr(px(10.)).flex().justify_end().child("Size")),
-            );
+            let ticked = self.checked.iter().filter(|c| **c).count();
+            let hover = p.hover;
+            let bar = div()
+                .flex()
+                .items_center()
+                .gap(px(10.))
+                .h(px(36.))
+                .px(px(10.))
+                .border_b_1()
+                .border_color(p.line)
+                .text_size(TEXT_META)
+                .text_color(p.ink_dim)
+                .child(Checkbox::new("all").checked(all).on_click(cx.listener(|this, on: &bool, _, cx| {
+                    this.checked.iter_mut().for_each(|c| *c = *on);
+                    cx.notify();
+                })))
+                .child(format!("{ticked} of {} · {}", count(self.info.files.len() as u64, "file", "files"), fmt::bytes(total as f64, false)));
+            let mut list = div().flex().flex_col().p(px(4.));
             for (i, f) in self.info.files.iter().enumerate() {
-                table = table.child(
+                let path = if f.path.is_empty() { f.name.clone() } else { f.path.clone() };
+                // The folder quiet, the file name plain: the name is what you look for.
+                let (dir, name) = match path.rfind('/') {
+                    Some(k) => (path[..=k].to_string(), path[k + 1..].to_string()),
+                    None => (String::new(), path),
+                };
+                list = list.child(
                     div()
+                        .id(("file", i))
                         .flex()
                         .items_center()
-                        .h(px(26.))
-                        .child(div().w(px(34.)).pl(px(10.)).child(Checkbox::new(("file", i)).checked(self.checked[i]).on_click(cx.listener(move |this, on: &bool, _, cx| {
+                        .gap(px(10.))
+                        .h(px(30.))
+                        .px(px(6.))
+                        .rounded(RADIUS)
+                        .hover(move |s| s.bg(hover))
+                        .child(Checkbox::new(("tick-file", i)).checked(self.checked[i]).on_click(cx.listener(move |this, on: &bool, _, cx| {
                             this.checked[i] = *on;
                             cx.notify();
-                        }))))
-                        .child(div().flex_1().min_w_0().truncate().child(if f.path.is_empty() { f.name.clone() } else { f.path.clone() }))
-                        .child(div().w(px(88.)).pr(px(10.)).flex().justify_end().font_features(tabular()).child(fmt::bytes(f.length as f64, false))),
+                        })))
+                        .child(
+                            div()
+                                .flex()
+                                .flex_1()
+                                .min_w_0()
+                                .overflow_hidden()
+                                .whitespace_nowrap()
+                                .when(!self.checked[i], |d| d.opacity(0.5))
+                                .when(!dir.is_empty(), |d| d.child(div().flex_none().max_w(relative(0.5)).truncate().text_color(p.ink_faint).child(dir)))
+                                .child(div().min_w_0().truncate().child(name)),
+                        )
+                        .child(div().flex_none().text_size(TEXT_META).text_color(p.ink_dim).font_features(tabular()).child(fmt::bytes(f.length as f64, false))),
                 );
             }
-            div().id("filelist").max_h(px(240.)).overflow_y_scroll().border_1().border_color(p.line).rounded(RADIUS).child(table).into_any_element()
+            div()
+                .flex()
+                .flex_col()
+                .border_1()
+                .border_color(p.line)
+                .rounded(RADIUS_LG)
+                .overflow_hidden()
+                .child(bar)
+                .child(div().id("filelist").max_h(px(240.)).overflow_y_scroll().child(list))
+                .into_any_element()
         };
 
         div()
@@ -490,20 +549,33 @@ impl Render for AddSheet {
             .child(
                 div()
                     .flex()
-                    .justify_between()
-                    .gap(px(12.))
-                    .mb(px(6.))
-                    .child(div().min_w_0().truncate().font_weight(FontWeight::BOLD).child(self.info.name.clone()))
-                    .child(div().text_color(p.ink_dim).child(size_text)),
+                    .flex_col()
+                    .gap(px(4.))
+                    .mb(px(10.))
+                    .child(
+                        div()
+                            .flex()
+                            .items_center()
+                            .gap(px(12.))
+                            .child(div().flex_1().min_w_0().truncate().font_weight(FontWeight::MEDIUM).child(self.info.name.clone()))
+                            .child(div().flex_none().text_size(TEXT_META).text_color(p.ink_dim).font_features(tabular()).child(size_text)),
+                    )
+                    .child(
+                        meta_line(&p)
+                            .child(count(self.info.files.len().max(1) as u64, "file", "files"))
+                            .child("·")
+                            .child(count(self.info.announce.len() as u64, "tracker", "trackers"))
+                            .child("·")
+                            .child(div().min_w_0().truncate().font_family(MONO).font_features(crate::theme::plain_mono()).child(self.info.info_hash.clone())),
+                    ),
             )
             .child(contents)
-            .child(div().mt(px(8.)).child(frow(&p, "Info Hash:", div().font_family(MONO).font_features(crate::theme::plain_mono()).text_size(TEXT_META).child(self.info.info_hash.clone()))))
-            .when(!self.info.comment.is_empty(), |d| d.child(frow(&p, "Comment:", div().child(self.info.comment.clone()))))
-            .child(frow(&p, "Trackers:", div().child(format!("{} announce URL(s)", self.info.announce.len()))))
+            .when(!self.info.comment.is_empty(), |d| d.child(div().mt(px(10.)).child(frow(&p, "Comment", div().child(self.info.comment.clone())))))
             .child(
                 div()
                     .flex()
                     .gap(px(16.))
+                    .mt(px(12.))
                     .child(Checkbox::new("start").label("Start torrent").checked(self.start).on_click(cx.listener(|this, on: &bool, _, cx| {
                         this.start = *on;
                         cx.notify();
@@ -515,7 +587,7 @@ impl Render for AddSheet {
             )
             .children(error_line(&p, &self.error))
             .child(
-                footer(&p, None)
+                footer(&p, "Esc to cancel · ↵ to add")
                     .child(button("cancel").label("Cancel").on_click(|_, window, cx| window.close_dialog(cx)))
                     .child(div().debug_selector(|| "add-ok".into()).child(button("ok").label("OK").primary().disabled(self.busy).on_click(cx.listener(|this, _, window, cx| this.confirm(window, cx))))),
             )
@@ -568,7 +640,7 @@ impl Render for UrlSheet {
             .child(div().mt(px(8.)).child(frow(&p, "Save In:", div().flex().gap(px(8.)).child(div().flex_1().child(Input::new(&self.path).h(CONTROL_H))).child(browse_button("browse", "Choose Download Folder", self.path.clone())))))
             .children(error_line(&p, &self.error))
             .child(
-                footer(&p, None)
+                footer(&p, "Esc to cancel · ↵ to add")
                     .child(button("cancel").label("Cancel").on_click(|_, window, cx| window.close_dialog(cx)))
                     .child(div().debug_selector(|| "url-ok".into()).child(button("ok").label("Continue").primary().on_click(cx.listener(|this, _, window, cx| this.confirm(window, cx))))),
             )
@@ -1929,7 +2001,7 @@ impl Render for CreateSheet {
             .children(error_line(&p, &self.error))
             .children(self.status.clone().map(|s| div().mt(px(6.)).text_color(p.ink_dim).child(s)))
             .child(
-                footer(&p, None)
+                footer(&p, "Esc to cancel · ↵ to create")
                     .child(button("cancel").label("Cancel").on_click(|_, window, cx| window.close_dialog(cx)))
                     .child(div().debug_selector(|| "create-ok".into()).child(button("ok").label("Create and Save As…").primary().disabled(self.busy).on_click(cx.listener(|this, _, window, cx| this.confirm(window, cx))))),
             )
@@ -2113,10 +2185,11 @@ impl Render for PrefsSheet {
                     .flex()
                     .items_center()
                     .gap(px(8.))
-                    .h(CONTROL_H)
+                    .h(NAV_ROW_H)
                     .px(px(10.))
                     .rounded(RADIUS)
                     .when(active, |d| d.bg(p.sel_quiet).font_weight(FontWeight::MEDIUM))
+                    .when(!active, |d| d.hover(|s| s.bg(p.hover)))
                     .child(icon(ic, 16., if active { p.accent } else { p.ink_dim }))
                     .child(label)
                     .on_click(cx.listener(move |this, _, _, cx| {
@@ -2132,25 +2205,40 @@ impl Render for PrefsSheet {
 
         let body: AnyElement = match self.page {
             Page::General => div()
-                .child(legend(&p, "When adding torrents"))
-                .child(self.check(cx, "startTorrentsAutomatically", "Start torrents automatically", false))
-                .child(self.check(cx, "askWhereToSave", "Show the Add Torrent dialog", false))
-                .child(self.check(cx, "sequentialDownload", "Download pieces in order by default", false))
-                .child(self.check(cx, "partFiles", "Append .part to incomplete files", false))
-                .child(div().mt(px(-6.)).mb(px(14.)).text_size(TEXT_META).text_color(p.ink_faint).child("Renamed once the torrent finishes, so unfinished downloads are never mistaken for complete ones."))
-                .child(legend(&p, "Notifications"))
-                .child(self.check(cx, "notifyOnComplete", "Show a notification when a download finishes", false))
-                .child(self.check(cx, "confirmOnDelete", "Confirm before removing a torrent", false))
-                .child(self.check(cx, "showSpeedInDock", "Show download progress on the Dock icon", false))
-                .child(legend(&p, "Updates"))
-                .child(self.check(cx, "autoUpdate", "Check for new versions automatically", false))
-                .child(div().mt(px(-6.)).text_size(TEXT_META).text_color(p.ink_faint).child("Downloads the new build in the background and offers a restart when it is ready. Nothing is installed until you say so."))
+                .child(card(
+                    &p,
+                    "When adding torrents",
+                    div()
+                        .child(self.check(cx, "startTorrentsAutomatically", "Start torrents automatically", false))
+                        .child(self.check(cx, "askWhereToSave", "Show the Add Torrent dialog", false))
+                        .child(self.check(cx, "sequentialDownload", "Download pieces in order by default", false))
+                        .child(self.check(cx, "partFiles", "Append .part to incomplete files", false))
+                        .child(note(&p, "Renamed once the torrent finishes, so unfinished downloads are never mistaken for complete ones.")),
+                ))
+                .child(card(
+                    &p,
+                    "Notifications",
+                    div()
+                        .child(self.check(cx, "notifyOnComplete", "Show a notification when a download finishes", false))
+                        .child(self.check(cx, "confirmOnDelete", "Confirm before removing a torrent", false))
+                        .child(self.check(cx, "showSpeedInDock", "Show download progress on the Dock icon", false)),
+                ))
+                .child(card(
+                    &p,
+                    "Updates",
+                    div()
+                        .child(self.check(cx, "autoUpdate", "Check for new versions automatically", false))
+                        .child(note(&p, "Downloads the new build in the background and offers a restart when it is ready. Nothing is installed until you say so.")),
+                ))
                 .into_any_element(),
-            Page::Dirs => div()
-                .child(legend(&p, "Location of downloaded files"))
-                .child(div().mb(px(6.)).text_color(p.ink_dim).child("Put new downloads in:"))
-                .child(div().flex().gap(px(8.)).child(div().flex_1().child(Input::new(&self.inputs["downloadPath"]).h(CONTROL_H))).child(browse_button("browse-dl", "Choose Download Folder", self.inputs["downloadPath"].clone())))
-                .into_any_element(),
+            Page::Dirs => card(
+                &p,
+                "Location of downloaded files",
+                div()
+                    .child(div().mb(px(6.)).text_color(p.ink_dim).child("Put new downloads in:"))
+                    .child(div().flex().gap(px(8.)).mb(px(10.)).child(div().flex_1().child(Input::new(&self.inputs["downloadPath"]).h(CONTROL_H))).child(browse_button("browse-dl", "Choose Download Folder", self.inputs["downloadPath"].clone()))),
+            )
+            .into_any_element(),
             Page::Connection => {
                 let mut ifaces = vec![(String::new(), "Any (follow the routing table)".to_string())];
                 ifaces.extend(self.interfaces.iter().map(|i| (i.name.clone(), format!("{} — {}", i.name, i.address))));
@@ -2166,57 +2254,97 @@ impl Render for PrefsSheet {
                 ];
                 let enc_label = enc_options[enc.min(2) as usize].1.clone();
                 div()
-                    .child(legend(&p, "Listening port"))
-                    .child(self.check(cx, "randomizePort", "Randomize the port each time ztorrent starts", false))
-                    .child(self.number(&p, "listenPort", "Port used for incoming connections:", ""))
-                    .child(self.check(cx, "enableUPnP", "Map the port with UPnP / NAT-PMP", off.upnp))
-                    .child(div().mt(px(8.)).child(legend(&p, "Proxy")))
-                    .child(self.check(cx, "proxyEnabled", "Route traffic through a SOCKS5 proxy", false))
-                    .child(frow(&p, "Proxy host:", Input::new(&self.inputs["proxyHost"]).h(CONTROL_H)))
-                    .child(self.number(&p, "proxyPort", "Proxy port:", ""))
-                    .child(frow(&p, "Username:", Input::new(&self.inputs["proxyUsername"]).h(CONTROL_H)))
-                    .child(frow(&p, "Password:", Input::new(&self.inputs["proxyPassword"]).h(CONTROL_H)))
-                    .child(hint(&p, "Covers tracker announces, web seeds and outgoing peer connections. Anything that cannot be routed is switched off rather than sent around the proxy: DHT, local discovery, µTP, port mapping and udp:// trackers all stop while this is on. Takes effect after a restart."))
-                    .child(div().mt(px(8.)).child(legend(&p, "Network interface")))
-                    .child(frow(&p, "Send traffic from:", dropdown(&p, "bind", bind_label, "bindInterface", ifaces, bind.clone(), &self.focus)))
-                    .child(hint(&p, "Pin every outgoing connection to one interface — a VPN's, typically. If it goes away, connections fail instead of falling back to your normal one, and resume by themselves when it returns. Local discovery, µTP, port mapping and udp:// trackers stop while this is set; DHT keeps working, bound to the same interface. Takes effect after a restart."))
-                    .child(div().mt(px(8.)).child(legend(&p, "Protocol encryption")))
-                    .child(frow(&p, "Peer connections:", dropdown(&p, "enc", enc_label, "encryption", enc_options, enc.to_string(), &self.focus)))
-                    .child(hint(&p, "Hides the handshake from traffic inspection. It does not hide tracker or DHT activity, and your address is still public to the swarm."))
-                    .child(div().mt(px(8.)).child(legend(&p, "Peer discovery")))
-                    .child(self.check(cx, "enableDHT", "Enable DHT (distributed hash table)", off.dht))
-                    .child(self.check(cx, "enablePEX", "Enable peer exchange", false))
-                    .child(self.check(cx, "enableLSD", "Enable local peer discovery", off.lsd))
-                    .child(hint(&p, "Local discovery broadcasts each torrent's infohash in the clear to every device on your network, and only finds peers on that same network. Off by default."))
-                    .child(self.check(cx, "enableUTP", "Enable µTP (micro transport protocol)", off.utp))
-                    .child(hint(&p, "Discovery changes take effect after a restart."))
+                    .child(card(
+                        &p,
+                        "Listening port",
+                        div()
+                            .child(self.check(cx, "randomizePort", "Randomize the port each time ztorrent starts", false))
+                            .child(self.number(&p, "listenPort", "Incoming port", ""))
+                            .child(self.check(cx, "enableUPnP", "Map the port with UPnP / NAT-PMP", off.upnp)),
+                    ))
+                    .child(card(
+                        &p,
+                        "Proxy",
+                        div()
+                            .child(self.check(cx, "proxyEnabled", "Route traffic through a SOCKS5 proxy", false))
+                            .child(frow(&p, "Proxy host", Input::new(&self.inputs["proxyHost"]).h(CONTROL_H)))
+                            .child(self.number(&p, "proxyPort", "Proxy port", ""))
+                            .child(frow(&p, "Username", Input::new(&self.inputs["proxyUsername"]).h(CONTROL_H)))
+                            .child(frow(&p, "Password", Input::new(&self.inputs["proxyPassword"]).h(CONTROL_H)))
+                            .child(hint(&p, "Covers tracker announces, web seeds and outgoing peer connections. Anything that cannot be routed is switched off rather than sent around the proxy: DHT, local discovery, µTP, port mapping and udp:// trackers all stop while this is on. Takes effect after a restart.")),
+                    ))
+                    .child(card(
+                        &p,
+                        "Network interface",
+                        div()
+                            .child(frow(&p, "Send traffic from", dropdown(&p, "bind", bind_label, "bindInterface", ifaces, bind.clone(), &self.focus)))
+                            .child(hint(&p, "Pin every outgoing connection to one interface — a VPN's, typically. If it goes away, connections fail instead of falling back to your normal one, and resume by themselves when it returns. Local discovery, µTP, port mapping and udp:// trackers stop while this is set; DHT keeps working, bound to the same interface. Takes effect after a restart.")),
+                    ))
+                    .child(card(
+                        &p,
+                        "Protocol encryption",
+                        div()
+                            .child(frow(&p, "Peer connections", dropdown(&p, "enc", enc_label, "encryption", enc_options, enc.to_string(), &self.focus)))
+                            .child(hint(&p, "Hides the handshake from traffic inspection. It does not hide tracker or DHT activity, and your address is still public to the swarm.")),
+                    ))
+                    .child(card(
+                        &p,
+                        "Peer discovery",
+                        div()
+                            .child(self.check(cx, "enableDHT", "Enable DHT (distributed hash table)", off.dht))
+                            .child(self.check(cx, "enablePEX", "Enable peer exchange", false))
+                            .child(self.check(cx, "enableLSD", "Enable local peer discovery", off.lsd))
+                            .child(note(&p, "Local discovery broadcasts each torrent's infohash in the clear to every device on your network, and only finds peers on that same network. Off by default."))
+                            .child(self.check(cx, "enableUTP", "Enable µTP (micro transport protocol)", off.utp))
+                            .child(note(&p, "Discovery changes take effect after a restart.")),
+                    ))
                     .into_any_element()
             }
             Page::Bandwidth => div()
-                .child(legend(&p, "Global rate limits"))
-                .child(self.number(&p, "maxDownloadRate", "Maximum download rate:", "kB/s  (0 = unlimited)"))
-                .child(self.number(&p, "maxUploadRate", "Maximum upload rate:", "kB/s  (0 = unlimited)"))
-                .child(div().mt(px(8.)).child(legend(&p, "Alternate rate limits")))
-                .child(self.number(&p, "altDownloadRate", "Alternate download rate:", "kB/s  (0 = unlimited)"))
-                .child(self.number(&p, "altUploadRate", "Alternate upload rate:", "kB/s  (0 = unlimited)"))
-                .child(self.check(cx, "altSpeedEnabled", "Use alternate limits now", false))
-                .child(div().mt(px(8.)).child(legend(&p, "Number of connections")))
-                .child(self.number(&p, "globalMaxConnections", "Global maximum connections:", "shared out between active torrents"))
-                .child(self.number(&p, "maxUploadSlots", "Upload slots per torrent:", ""))
+                .child(card(
+                    &p,
+                    "Global rate limits",
+                    div()
+                        .child(self.number(&p, "maxDownloadRate", "Download rate", "kB/s  (0 = unlimited)"))
+                        .child(self.number(&p, "maxUploadRate", "Upload rate", "kB/s  (0 = unlimited)")),
+                ))
+                .child(card(
+                    &p,
+                    "Alternate rate limits",
+                    div()
+                        .child(self.number(&p, "altDownloadRate", "Download rate", "kB/s  (0 = unlimited)"))
+                        .child(self.number(&p, "altUploadRate", "Upload rate", "kB/s  (0 = unlimited)"))
+                        .child(self.check(cx, "altSpeedEnabled", "Use alternate limits now", false)),
+                ))
+                .child(card(
+                    &p,
+                    "Number of connections",
+                    div()
+                        .child(self.number(&p, "globalMaxConnections", "Global maximum", "shared out between active torrents"))
+                        .child(self.number(&p, "maxUploadSlots", "Upload slots", "per torrent")),
+                ))
                 .into_any_element(),
             Page::Queueing => div()
-                .child(legend(&p, "Queue settings"))
-                .child(self.number(&p, "maxActiveTorrents", "Maximum active torrents:", ""))
-                .child(self.number(&p, "maxActiveDownloads", "Maximum active downloads:", ""))
-                .child(div().mt(px(8.)).child(legend(&p, "Seeding goal")))
-                .child(self.number(&p, "seedRatioLimit", "Seed until ratio reaches:", "%  (0 = forever)"))
-                .child(self.number(&p, "seedTimeLimit", "Seed for at least:", "minutes  (0 = forever)"))
+                .child(card(
+                    &p,
+                    "Queue settings",
+                    div()
+                        .child(self.number(&p, "maxActiveTorrents", "Active torrents", "at most"))
+                        .child(self.number(&p, "maxActiveDownloads", "Active downloads", "at most")),
+                ))
+                .child(card(
+                    &p,
+                    "Seeding goal",
+                    div()
+                        .child(self.number(&p, "seedRatioLimit", "Seed until ratio", "%  (0 = forever)"))
+                        .child(self.number(&p, "seedTimeLimit", "Seed for at least", "minutes  (0 = forever)")),
+                ))
                 .into_any_element(),
             Page::Appearance => {
                 let theme = self.string("theme");
                 let options = vec![("classic".to_string(), "Light".to_string()), ("graphite".to_string(), "Dark".to_string())];
                 let label = if theme == "graphite" { "Dark" } else { "Light" }.to_string();
-                div().child(legend(&p, "Theme")).child(frow(&p, "Appearance:", div().w(px(160.)).child(dropdown(&p, "theme", label, "theme", options, theme, &self.focus)))).into_any_element()
+                card(&p, "Theme", div().child(frow(&p, "Appearance", div().w(px(160.)).child(dropdown(&p, "theme", label, "theme", options, theme, &self.focus))))).into_any_element()
             }
         };
 
@@ -2253,7 +2381,7 @@ impl Render for PrefsSheet {
                     .child(div().id("prefs-page").flex_1().min_w_0().max_h(px(520.)).overflow_y_scroll().pl(px(20.)).child(body)),
             )
             .child(
-                footer(&p, None)
+                footer(&p, "Esc to cancel · ↵ to apply")
                     .child(button("cancel").label("Cancel").on_click(|_, window, cx| window.close_dialog(cx)))
                     .child(div().debug_selector(|| "prefs-apply".into()).child(button("ok").label("Apply").primary().on_click(cx.listener(|this, _, window, cx| this.apply(window, cx))))),
             )
@@ -2312,7 +2440,7 @@ impl Render for PropertiesSheet {
             .flex_col()
             .child(title(&p, format!("Properties — {}", r.name)))
             .child(grid)
-            .child(footer(&p, None).child(div().debug_selector(|| "close".into()).child(button("close").label("Close").on_click(|_, window, cx| window.close_dialog(cx)))))
+            .child(footer(&p, "Esc or ↵ to close").child(div().debug_selector(|| "close".into()).child(button("close").label("Close").on_click(|_, window, cx| window.close_dialog(cx)))))
     }
 }
 
@@ -2367,7 +2495,7 @@ impl Render for LabelStyleSheet {
             .child(small("SYMBOL"))
             .child(symbols)
             .child(
-                footer(&p, None)
+                footer(&p, "Esc to cancel · ↵ to save")
                     .child(button("cancel").label("Cancel").on_click(|_, window, cx| window.close_dialog(cx)))
                     .child(div().debug_selector(|| "label-ok".into()).child(button("ok").label("OK").primary().on_click(cx.listener(|this, _, window, cx| this.ok(window, cx))))),
             )
@@ -2495,7 +2623,7 @@ impl Render for NewLabelSheet {
             .child(small_heading(&p, "SYMBOL"))
             .child(symbols)
             .child(
-                footer(&p, None)
+                footer(&p, "Esc to cancel · ↵ to create")
                     .child(button("cancel").label("Cancel").on_click(|_, window, cx| window.close_dialog(cx)))
                     .child(div().debug_selector(|| "new-label-ok".into()).child(button("ok").label("OK").primary().on_click(cx.listener(|this, _, window, cx| this.submit(window, cx))))),
             )
