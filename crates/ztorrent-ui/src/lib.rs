@@ -17,6 +17,7 @@ mod state;
 mod status_bar;
 mod theme;
 mod toolbar;
+mod widgets;
 mod workspace;
 
 use gpui::*;

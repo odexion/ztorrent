@@ -6,13 +6,13 @@
 use crate::actions::accel;
 use crate::bridge::{ask, send};
 use crate::icons::icon;
-use crate::theme::{CHIP_H, CONTROL_H, CONTROL_SM_H, MONO, Palette, RADIUS, TEXT_CAPTION, TEXT_META, TEXT_TITLE, Theme, tabular};
+use crate::widgets::{count, dot, dropdown, filter_pill, list_row, meta_line, seed_health, selection_bar, tag, tilde, with_menu};
+use crate::theme::{CONTROL_H, CONTROL_SM_H, MONO, Palette, RADIUS, TEXT_CAPTION, TEXT_META, TEXT_TITLE, Theme, tabular};
 use gpui::prelude::*;
 use gpui::*;
 use gpui_component::button::{Button, ButtonVariants};
 use gpui_component::checkbox::Checkbox;
 use gpui_component::input::{Input, InputEvent, InputState, Textarea, TextareaState};
-use gpui_component::native_menu::NativeMenu;
 use gpui_component::{Disableable, Sizable, WindowExt};
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::PathBuf;
@@ -32,14 +32,7 @@ pub struct Library {
 
 impl Global for Library {}
 
-/// A choice from one of the native dropdown menus, routed back to the sheet
-/// that opened it.
-#[derive(Clone, PartialEq, Debug, Action)]
-#[action(namespace = ztorrent, no_json)]
-pub struct PickOption {
-    pub field: String,
-    pub value: String,
-}
+pub use crate::widgets::PickOption;
 
 // ---------------------------------------------------------------- plumbing
 
@@ -133,43 +126,6 @@ fn text_input(window: &mut Window, cx: &mut App, value: &str, placeholder: &str)
 
 fn read(input: &Entity<InputState>, cx: &App) -> String {
     input.read(cx).value().to_string()
-}
-
-/// A dropdown drawn as a button that opens a native menu, as a <select> does on macOS.
-/// A native pop-up menu whose choice arrives as a [`PickOption`] action.
-///
-/// Actions travel from the focused element up, and while a sheet is open the
-/// focus is usually on the dialog around it, above the sheet's handler. So the
-/// sheet's own focus handle is focused first, putting the handler on that path.
-fn dropdown(p: &Palette, id: &str, current: String, field: &'static str, options: Vec<(String, String)>, selected: String, sheet: &FocusHandle) -> Stateful<Div> {
-    let sheet = sheet.clone();
-    let hover = p.hover;
-    let selector = format!("dd-{id}");
-    div()
-        .id(SharedString::from(selector.clone()))
-        .debug_selector(move || selector)
-        .flex()
-        .items_center()
-        .justify_between()
-        .gap(px(8.))
-        .h(CONTROL_H)
-        .px(px(9.))
-        .rounded(RADIUS)
-        .border_1()
-        .border_color(p.line_hard)
-        .bg(p.bg)
-        .hover(move |s| s.bg(hover))
-        .child(div().min_w_0().truncate().child(current))
-        .child(div().text_size(px(9.)).text_color(p.ink_faint).child("▼"))
-        .on_mouse_down(MouseButton::Left, move |ev, window, cx| {
-            window.focus(&sheet, cx);
-            let mut menu = NativeMenu::new();
-            for (value, label) in &options {
-                menu = menu.menu_with_check(label.clone(), *value == selected, Box::new(PickOption { field: field.into(), value: value.clone() }));
-            }
-            menu.show(ev.position, window, cx);
-            cx.stop_propagation();
-        })
 }
 
 /// Where a folder sheet should open: a file is taken as the folder holding it,
@@ -1495,65 +1451,6 @@ impl SearchSheet {
     }
 }
 
-/// Opens a native menu of `options` from a click on `el`; the choice arrives
-/// as a [`PickOption`] for `field`, as from [`dropdown`].
-fn with_menu(el: Stateful<Div>, field: &'static str, options: Vec<(String, String)>, selected: String, sheet: &FocusHandle) -> Stateful<Div> {
-    let sheet = sheet.clone();
-    el.cursor_pointer().on_mouse_down(MouseButton::Left, move |ev, window, cx| {
-        window.focus(&sheet, cx);
-        let mut menu = NativeMenu::new();
-        for (value, label) in &options {
-            menu = menu.menu_with_check(label.clone(), *value == selected, Box::new(PickOption { field: field.into(), value: value.clone() }));
-        }
-        menu.show(ev.position, window, cx);
-        cx.stop_propagation();
-    })
-}
-
-/// A filter as a pill: set, it names its value and carries an × that clears
-/// it; unset, a dashed "+ Season". A click opens the menu of choices.
-fn filter_chip(p: &Palette, field: &'static str, name: &str, value: Option<String>, options: Vec<(String, String)>, sheet: &FocusHandle, cx: &mut Context<SearchSheet>) -> Stateful<Div> {
-    let selected = options.iter().find(|(_, l)| Some(l) == value.as_ref()).map(|(v, _)| v.clone()).unwrap_or_default();
-    let mut options = options;
-    options.insert(0, (String::new(), format!("Any {}", name.to_lowercase())));
-    let chip = div()
-        .id(SharedString::from(format!("chip-{field}")))
-        .flex()
-        .flex_none()
-        .items_center()
-        .gap(px(6.))
-        .h(CHIP_H)
-        .px(px(10.))
-        .rounded_full()
-        .text_size(TEXT_META);
-    let chip = match value {
-        Some(v) => {
-            let (fg, hover) = (p.accent, p.hover);
-            chip.bg(p.accent_soft).text_color(fg).child(v).child(
-                div()
-                    .id(SharedString::from(format!("clear-{field}")))
-                    .flex()
-                    .items_center()
-                    .justify_center()
-                    .size(px(14.))
-                    .rounded_full()
-                    .hover(move |s| s.bg(hover))
-                    .child("×")
-                    .on_mouse_down(MouseButton::Left, cx.listener(move |this, _, _, cx| {
-                        this.set_filter(field, "");
-                        cx.stop_propagation();
-                        cx.notify();
-                    })),
-            )
-        }
-        None => {
-            let hover = p.hover;
-            chip.border_1().border_dashed().border_color(p.line_hard).text_color(p.ink_dim).hover(move |s| s.bg(hover)).child(format!("+ {name}"))
-        }
-    };
-    with_menu(chip, field, options, selected, sheet)
-}
-
 const SORTS: [(&str, &str); 5] = [("seeds", "Most seeds"), ("size", "Largest"), ("small", "Smallest"), ("name", "Name"), ("source", "Source")];
 
 impl SearchSheet {
@@ -1597,30 +1494,12 @@ impl SearchSheet {
         let r = &self.results[i];
         let on = self.selected.contains(&r.link);
         let full = format!("{}\n{}", r.title, r.source);
-        let health = match r.seeders {
-            Some(n) if n >= 5 => p.ok,
-            Some(n) if n >= 1 => p.warn,
-            _ => p.ink_faint,
-        };
-        let count = |n: u32, one: &str, many: &str| format!("{n} {}", if n == 1 { one } else { many });
         let swarm = match (r.seeders, r.leechers) {
             (Some(s), Some(l)) => format!("{} · {}", count(s, "seed", "seeds"), count(l, "peer", "peers")),
             (Some(s), None) => count(s, "seed", "seeds"),
             _ => "Seeds unknown".to_string(),
         };
-        let pill = |text: String| div().px(px(6.)).rounded(px(4.)).bg(p.sunken).text_color(p.ink_dim).child(text);
-        let hover = p.hover;
-        div()
-            .id(("hit", i))
-            .flex()
-            .items_center()
-            .gap(px(12.))
-            .px(px(8.))
-            .py(px(8.))
-            .rounded(RADIUS)
-            .cursor_pointer()
-            .when(on, |d| d.bg(p.accent_soft))
-            .when(!on, |d| d.hover(move |s| s.bg(hover)))
+        list_row(p, ("hit", i), on)
             .on_click(cx.listener(move |this, ev: &ClickEvent, window, cx| this.click_result(i, ev, window, cx)))
             .child(div().flex_none().child(Checkbox::new(("tick", i)).checked(on).on_click(cx.listener(move |this, on: &bool, _, cx| {
                 let link = this.results[i].link.clone();
@@ -1649,17 +1528,12 @@ impl SearchSheet {
                             .child(r.title.clone()),
                     )
                     .child(
-                        div()
-                            .flex()
-                            .items_center()
-                            .gap(px(10.))
-                            .text_size(TEXT_META)
-                            .text_color(p.ink_dim)
-                            .child(div().flex().flex_none().items_center().gap(px(5.)).child(div().size(px(7.)).rounded_full().bg(health)).child(swarm))
+                        meta_line(p)
+                            .child(div().flex().flex_none().items_center().gap(px(5.)).child(dot(seed_health(p, r.seeders))).child(swarm))
                             .when(r.size > 0, |d| d.child(div().flex_none().font_features(tabular()).child(fmt::bytes(r.size as f64, true))))
                             .child(div().min_w_0().truncate().child(r.source.clone()))
-                            .children(episode_tag(&r.title).label().map(pill))
-                            .children(quality(&r.title).map(|q| pill(q.to_string()))),
+                            .children(episode_tag(&r.title).label().map(|t| tag(p, t)))
+                            .children(quality(&r.title).map(|q| tag(p, q))),
                     ),
             )
             .child(button(("add", i)).label("Add…").small().h(CONTROL_SM_H).on_click(cx.listener(move |this, _, window, cx| {
@@ -1678,11 +1552,7 @@ impl SearchSheet {
             return None;
         }
         let size: u64 = self.results.iter().filter(|r| self.selected.contains(&r.link)).map(|r| r.size).sum();
-        let folder = self.settings.offered_save_path().to_string();
-        let folder = match std::env::var("HOME") {
-            Ok(home) if !home.is_empty() && folder.starts_with(&home) => format!("~{}", &folder[home.len()..]),
-            _ => folder,
-        };
+        let folder = tilde(self.settings.offered_save_path());
         let mut what = format!("{ticked} selected");
         if size > 0 {
             what.push_str(&format!(" · {}", fmt::bytes(size as f64, true)));
@@ -1692,18 +1562,8 @@ impl SearchSheet {
         }
         let label = if ticked == 1 { "Add…".to_string() } else { format!("Add {ticked} Torrents") };
         Some(
-            div()
-                .flex()
-                .items_center()
-                .gap(px(8.))
+            selection_bar(p, what)
                 .mt(px(10.))
-                .py(px(8.))
-                .px(px(12.))
-                .rounded(RADIUS)
-                .bg(p.sunken)
-                .border_1()
-                .border_color(p.line)
-                .child(div().flex_1().min_w_0().truncate().child(what))
                 .child(button("clear-selection").label("Clear").small().h(CONTROL_SM_H).ghost().on_click(cx.listener(|this, _, _, cx| {
                     this.selected.clear();
                     cx.notify();
@@ -1771,9 +1631,9 @@ impl Render for SearchSheet {
                     }
                     cx.notify();
                 }))))
-                .child(filter_chip(&p, "season", "Season", self.season.map(|s| format!("Season {s}")), seasons, &self.focus, cx))
-                .child(filter_chip(&p, "episode", "Episode", self.episode.map(|e| format!("Episode {e}")), episodes, &self.focus, cx))
-                .child(filter_chip(&p, "quality", "Quality", self.quality.map(String::from), qualities, &self.focus, cx))
+                .child(filter_pill(&p, "season", "Season", self.season.map(|s| format!("Season {s}")), seasons, &self.focus, cx, |this: &mut SearchSheet, _| this.set_filter("season", "")))
+                .child(filter_pill(&p, "episode", "Episode", self.episode.map(|e| format!("Episode {e}")), episodes, &self.focus, cx, |this: &mut SearchSheet, _| this.set_filter("episode", "")))
+                .child(filter_pill(&p, "quality", "Quality", self.quality.map(String::from), qualities, &self.focus, cx, |this: &mut SearchSheet, _| this.set_filter("quality", "")))
                 .child(div().flex_1())
                 .child(div().flex_none().text_color(p.ink_dim).child(format!("{count} ·")))
                 .child(with_menu(
