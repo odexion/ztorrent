@@ -265,17 +265,50 @@ impl Theme {
 
 // ------------------------------------------------------------------ metrics
 
+// Five text roles, and nothing in between: captions (hints, the legal
+// note), meta (seeds, sizes, counts), body (rows, fields, buttons; names in
+// MEDIUM weight), and titles.
+pub const TEXT_CAPTION: Pixels = px(11.);
+pub const TEXT_META: Pixels = px(12.);
 pub const FONT_SIZE: Pixels = px(13.);
+pub const TEXT_TITLE: Pixels = px(15.);
+
+// One height for every control that sits in a row, so buttons, fields and
+// menus line up; a smaller one for buttons inside list rows and bars.
+pub const CONTROL_H: Pixels = px(30.);
+pub const CONTROL_SM_H: Pixels = px(26.);
+pub const CHIP_H: Pixels = px(24.);
+pub const NAV_ROW_H: Pixels = px(28.);
+
 pub const ROW_H: Pixels = px(26.);
 pub const RADIUS: Pixels = px(6.);
 pub const RADIUS_LG: Pixels = px(10.);
 
-#[cfg(target_os = "macos")]
-pub const MONO: &str = "Menlo";
-#[cfg(target_os = "windows")]
-pub const MONO: &str = "Consolas";
-#[cfg(not(any(target_os = "macos", target_os = "windows")))]
-pub const MONO: &str = "DejaVu Sans Mono";
+/// The typefaces, carried in the binary so every platform looks the same.
+pub const SANS: &str = "Inter";
+pub const MONO: &str = "JetBrains Mono";
+
+/// The font files behind [`SANS`] and [`MONO`], for the text system.
+pub fn fonts() -> Vec<std::borrow::Cow<'static, [u8]>> {
+    macro_rules! font {
+        ($file:literal) => {
+            std::borrow::Cow::Borrowed(&include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/assets/fonts/", $file))[..])
+        };
+    }
+    vec![
+        font!("Inter-Regular.ttf"),
+        font!("Inter-Medium.ttf"),
+        font!("Inter-SemiBold.ttf"),
+        font!("Inter-Bold.ttf"),
+        font!("JetBrainsMono-Regular.ttf"),
+    ]
+}
+
+/// Monospaced text as typed: JetBrains Mono's coding ligatures would draw
+/// `://` in a tracker address as one joined glyph.
+pub fn plain_mono() -> FontFeatures {
+    FontFeatures(Arc::new(vec![("calt".into(), 0), ("liga".into(), 0)]))
+}
 
 /// Digits that line up in columns.
 pub fn tabular() -> FontFeatures {

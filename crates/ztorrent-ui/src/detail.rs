@@ -4,7 +4,7 @@ use crate::actions::*;
 use crate::icons::icon;
 use crate::progress::progress_bar;
 use crate::state::{HISTORY_LEN, History, Tab};
-use crate::theme::{MONO, Palette, RADIUS, ROW_H, Theme, tabular};
+use crate::theme::{MONO, Palette, RADIUS, ROW_H, TEXT_CAPTION, TEXT_META, Theme, tabular};
 use crate::workspace::Workspace;
 use gpui::prelude::*;
 use gpui::*;
@@ -30,7 +30,7 @@ impl Workspace {
                     .h(px(28.))
                     .px(px(10.))
                     .rounded(RADIUS)
-                    .text_size(px(12.))
+                    .text_size(TEXT_META)
                     .font_weight(FontWeight::MEDIUM)
                     .text_color(if active { p.ink } else { p.ink_dim })
                     .when(active, |d| d.bg(p.sel_quiet))
@@ -137,7 +137,7 @@ impl Workspace {
             .gap(px(18.))
             .px(px(18.))
             .py(px(10.))
-            .text_size(px(12.))
+            .text_size(TEXT_META)
             .text_color(p.ink_dim)
             .border_b_1()
             .border_color(p.line)
@@ -167,7 +167,7 @@ impl Workspace {
                     .right_0()
                     .top(relative(frac))
                     .mt(px(-8.))
-                    .text_size(px(11.))
+                    .text_size(TEXT_CAPTION)
                     .text_color(p.ink_faint)
                     .child(fmt::speed(peak * (1.0 - frac as f64), false)),
             );
@@ -180,7 +180,7 @@ impl Workspace {
             .h(px(pb))
             .flex()
             .justify_between()
-            .text_size(px(11.))
+            .text_size(TEXT_CAPTION)
             .text_color(p.ink_faint)
             .child(format!("{HISTORY_LEN}s ago"))
             .child("now");
@@ -194,7 +194,7 @@ impl Workspace {
     }
 
     fn render_logger(&self, p: &Palette) -> impl IntoElement {
-        let mut list = div().flex().flex_col().py(px(8.)).font_family(MONO).text_size(px(12.)).line_height(px(20.));
+        let mut list = div().flex().flex_col().py(px(8.)).font_family(MONO).font_features(crate::theme::plain_mono()).text_size(TEXT_META).line_height(px(20.));
         for line in &self.state.log {
             let color = match line.level {
                 ztorrent_core::LogLevel::Warn => p.warn,
@@ -272,7 +272,7 @@ fn cell(width: Pixels, numeric: bool) -> Div {
 
 /// A header row; a zero width means "take what is left".
 fn table_head(p: &Palette, cols: &[(&'static str, Pixels, bool)]) -> Div {
-    let mut head = div().flex().flex_none().items_center().h(px(30.)).border_b_1().border_color(p.line).text_size(px(12.)).font_weight(FontWeight::MEDIUM).text_color(p.ink_dim);
+    let mut head = div().flex().flex_none().items_center().h(px(30.)).border_b_1().border_color(p.line).text_size(TEXT_META).font_weight(FontWeight::MEDIUM).text_color(p.ink_dim);
     for (label, width, numeric) in cols {
         head = head.child(if *width == px(0.) { div().flex_1().min_w_0().px(px(10.)).child(*label) } else { cell(*width, *numeric).child(*label) });
     }
@@ -288,7 +288,7 @@ fn info_grid(p: &Palette, title: &'static str, items: Vec<(&'static str, String,
                 .flex()
                 .gap(px(12.))
                 .child(div().w(px(128.)).flex_none().text_color(p.ink_dim).child(k))
-                .child(div().flex_1().min_w_0().truncate().when(mono, |d| d.font_family(MONO).text_size(px(12.))).child(v)),
+                .child(div().flex_1().min_w_0().truncate().when(mono, |d| d.font_family(MONO).font_features(crate::theme::plain_mono()).text_size(TEXT_META)).child(v)),
         );
     }
     div()
@@ -296,7 +296,7 @@ fn info_grid(p: &Palette, title: &'static str, items: Vec<(&'static str, String,
         .flex_col()
         .flex_1()
         .min_w_0()
-        .child(div().mb(px(10.)).text_size(px(11.)).font_weight(FontWeight::SEMIBOLD).text_color(p.ink_faint).child(title.to_uppercase()))
+        .child(div().mb(px(10.)).text_size(TEXT_CAPTION).font_weight(FontWeight::SEMIBOLD).text_color(p.ink_faint).child(title.to_uppercase()))
         .child(g)
 }
 
@@ -424,7 +424,7 @@ fn render_trackers(p: &Palette, d: &Details) -> impl IntoElement {
         .h(px(30.))
         .border_b_1()
         .border_color(p.line)
-        .text_size(px(12.))
+        .text_size(TEXT_META)
         .font_weight(FontWeight::MEDIUM)
         .text_color(p.ink_dim)
         .child(div().w(relative(0.52)).px(px(10.)).child("Tracker"))
@@ -473,7 +473,7 @@ fn render_peers(p: &Palette, d: &Details) -> impl IntoElement {
                 .hover(move |s| s.bg(hover))
                 .child(cell(px(140.), false).child(div().truncate().child(peer.address.clone())))
                 .child(cell(px(74.), false).text_color(p.ink_faint).child(peer.kind.clone()))
-                .child(cell(px(58.), false).font_family(MONO).text_size(px(11.)).child(peer.flags.clone()))
+                .child(cell(px(58.), false).font_family(MONO).font_features(crate::theme::plain_mono()).text_size(TEXT_CAPTION).child(peer.flags.clone()))
                 .child(div().flex_1().min_w_0().px(px(10.)).truncate().child(peer.client.clone()))
                 .child(cell(px(58.), true).child(fmt::pct(peer.progress, 1)))
                 .child(cell(px(94.), true).child(fmt::speed(peer.down_speed, true)))
@@ -510,7 +510,7 @@ fn render_pieces(p: &Palette, d: &Details) -> impl IntoElement {
         .gap(px(18.))
         .px(px(18.))
         .py(px(10.))
-        .text_size(px(12.))
+        .text_size(TEXT_META)
         .text_color(p.ink_dim)
         .border_b_1()
         .border_color(p.line)

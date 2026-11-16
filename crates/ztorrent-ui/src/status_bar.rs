@@ -1,6 +1,6 @@
 use crate::actions::{About, ToggleAltSpeed};
 use crate::icons::icon;
-use crate::theme::{Theme, tabular};
+use crate::theme::{TEXT_META, Theme, tabular};
 use crate::toolbar::alt_speed_hint;
 use crate::workspace::Workspace;
 use gpui::prelude::*;
@@ -56,7 +56,7 @@ impl Workspace {
             .items_center()
             .h(px(30.))
             .px(px(14.))
-            .text_size(px(12.))
+            .text_size(TEXT_META)
             .text_color(p.ink_dim)
             .bg(p.chrome)
             .border_t_1()

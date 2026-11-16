@@ -3,7 +3,7 @@
 use crate::actions::*;
 use crate::icons::icon;
 use crate::progress::progress_bar;
-use crate::theme::{Palette, ROW_H, Theme, tabular};
+use crate::theme::{Palette, ROW_H, TEXT_CAPTION, TEXT_META, Theme, tabular};
 use crate::workspace::{DraggedTorrents, Resize, Workspace};
 use gpui::prelude::*;
 use gpui::*;
@@ -25,7 +25,7 @@ impl Render for DragChip {
             .rounded(px(20.))
             .bg(p.accent)
             .text_color(gpui::white())
-            .text_size(px(12.))
+            .text_size(TEXT_META)
             .font_weight(FontWeight::MEDIUM)
             .whitespace_nowrap()
             .child(self.0.clone())
@@ -137,7 +137,7 @@ impl Workspace {
                             .bg(p.sunken)
                             .border_1()
                             .border_color(p.line)
-                            .text_size(px(11.))
+                            .text_size(TEXT_CAPTION)
                             .text_color(p.ink_dim)
                             .child(accel("O", false)),
                     )
@@ -163,7 +163,7 @@ impl Workspace {
                 .w(px(w))
                 .h_full()
                 .px(px(10.))
-                .text_size(px(12.))
+                .text_size(TEXT_META)
                 .font_weight(FontWeight::MEDIUM)
                 .text_color(p.ink_dim)
                 .whitespace_nowrap()

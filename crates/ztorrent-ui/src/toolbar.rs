@@ -1,6 +1,6 @@
 use crate::actions::{self, accel};
 use crate::icons::icon;
-use crate::theme::{RADIUS, Theme};
+use crate::theme::{CONTROL_H, RADIUS, Theme};
 use crate::workspace::Workspace;
 use gpui::prelude::*;
 use gpui::*;
@@ -99,7 +99,7 @@ impl Workspace {
         bar.child(div().flex_1()).child(
             div()
                 .w(px(200.))
-                .child(Input::new(&self.search).prefix(icon("search", 15., p.ink_faint)).cleanable(true)),
+                .child(Input::new(&self.search).h(CONTROL_H).prefix(icon("search", 15., p.ink_faint)).cleanable(true)),
         )
     }
 }

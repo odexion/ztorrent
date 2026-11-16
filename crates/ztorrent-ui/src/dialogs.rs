@@ -6,7 +6,7 @@
 use crate::actions::accel;
 use crate::bridge::{ask, send};
 use crate::icons::icon;
-use crate::theme::{MONO, Palette, RADIUS, Theme, tabular};
+use crate::theme::{CHIP_H, CONTROL_H, CONTROL_SM_H, MONO, Palette, RADIUS, TEXT_CAPTION, TEXT_META, TEXT_TITLE, Theme, tabular};
 use gpui::prelude::*;
 use gpui::*;
 use gpui_component::button::{Button, ButtonVariants};
@@ -86,12 +86,17 @@ fn open_with<V: Render>(window: &mut Window, cx: &mut App, width: f32, view: Ent
     });
 }
 
+/// A button at the one control height; `.small()` ones add `.h(CONTROL_SM_H)`.
+fn button(id: impl Into<ElementId>) -> Button {
+    Button::new(id).h(CONTROL_H)
+}
+
 fn title(p: &Palette, text: impl Into<SharedString>) -> Div {
-    div().pb(px(14.)).text_size(px(15.)).font_weight(FontWeight::SEMIBOLD).text_color(p.ink).child(text.into())
+    div().pb(px(14.)).text_size(TEXT_TITLE).font_weight(FontWeight::SEMIBOLD).text_color(p.ink).child(text.into())
 }
 
 fn legend(p: &Palette, text: &str) -> Div {
-    div().mb(px(10.)).text_size(px(11.)).font_weight(FontWeight::SEMIBOLD).text_color(p.ink_faint).child(text.to_uppercase())
+    div().mb(px(10.)).text_size(TEXT_CAPTION).font_weight(FontWeight::SEMIBOLD).text_color(p.ink_faint).child(text.to_uppercase())
 }
 
 fn frow(p: &Palette, label: &str, content: impl IntoElement) -> Div {
@@ -105,7 +110,7 @@ fn frow(p: &Palette, label: &str, content: impl IntoElement) -> Div {
 }
 
 fn hint(p: &Palette, text: &str) -> Div {
-    div().ml(px(180.)).mt(px(-4.)).mb(px(10.)).text_size(px(12.)).text_color(p.ink_faint).child(text.to_string())
+    div().ml(px(180.)).mt(px(-4.)).mb(px(10.)).text_size(TEXT_META).text_color(p.ink_faint).child(text.to_string())
 }
 
 fn error_line(p: &Palette, error: &Option<String>) -> Option<Div> {
@@ -147,7 +152,7 @@ fn dropdown(p: &Palette, id: &str, current: String, field: &'static str, options
         .items_center()
         .justify_between()
         .gap(px(8.))
-        .h(px(30.))
+        .h(CONTROL_H)
         .px(px(9.))
         .rounded(RADIUS)
         .border_1()
@@ -241,7 +246,7 @@ fn browse_into(window: &mut Window, cx: &mut App, title: &str, input: Entity<Inp
 }
 
 fn browse_button(id: &'static str, title: &'static str, input: Entity<InputState>) -> Button {
-    Button::new(id).label("Browse…").small().on_click(move |_, window, cx: &mut App| browse_into(window, cx, title, input.clone()))
+    button(id).label("Browse…").small().h(CONTROL_SM_H).on_click(move |_, window, cx: &mut App| browse_into(window, cx, title, input.clone()))
 }
 
 // ------------------------------------------------------------------ prompt
@@ -272,11 +277,11 @@ impl Render for PromptSheet {
             .flex_col()
             .child(title(&p, self.title.clone()))
             .child(div().mb(px(6.)).text_color(p.ink_dim).child(self.label.clone()))
-            .child(Input::new(&self.input))
+            .child(Input::new(&self.input).h(CONTROL_H))
             .child(
                 footer(&p, None)
-                    .child(Button::new("cancel").label("Cancel").on_click(|_, window, cx| window.close_dialog(cx)))
-                    .child(div().debug_selector(|| "prompt-ok".into()).child(Button::new("ok").label("OK").primary().on_click(cx.listener(|this, _, window, cx| this.submit(window, cx))))),
+                    .child(button("cancel").label("Cancel").on_click(|_, window, cx| window.close_dialog(cx)))
+                    .child(div().debug_selector(|| "prompt-ok".into()).child(button("ok").label("OK").primary().on_click(cx.listener(|this, _, window, cx| this.submit(window, cx))))),
             )
     }
 }
@@ -307,7 +312,7 @@ impl Render for NoticeSheet {
             .child(title(&p, self.title.clone()))
             .child(div().text_color(p.err).child(self.message.clone()))
             .child(div().mt(px(6.)).text_color(p.ink_dim).child(self.detail.clone()))
-            .child(footer(&p, None).child(div().debug_selector(|| "close".into()).child(Button::new("close").label("Close").on_click(|_, window, cx| window.close_dialog(cx)))))
+            .child(footer(&p, None).child(div().debug_selector(|| "close".into()).child(button("close").label("Close").on_click(|_, window, cx| window.close_dialog(cx)))))
     }
 }
 
@@ -465,10 +470,10 @@ impl Render for AddSheet {
                 div()
                     .flex()
                     .items_center()
-                    .h(px(30.))
+                    .h(CONTROL_H)
                     .border_b_1()
                     .border_color(p.line)
-                    .text_size(px(12.))
+                    .text_size(TEXT_META)
                     .font_weight(FontWeight::MEDIUM)
                     .text_color(p.ink_dim)
                     .child(div().w(px(34.)).pl(px(10.)).child(Checkbox::new("all").checked(all).on_click(cx.listener(|this, on: &bool, _, cx| {
@@ -515,7 +520,7 @@ impl Render for AddSheet {
             }))
             .child(title(&p, "Add New Torrent"))
             .child(legend(&p, "Save In"))
-            .child(div().flex().gap(px(8.)).mb(px(10.)).child(div().flex_1().child(Input::new(&self.path))).child(browse_button("browse", "Choose Download Folder", self.path.clone())))
+            .child(div().flex().gap(px(8.)).mb(px(10.)).child(div().flex_1().child(Input::new(&self.path).h(CONTROL_H))).child(browse_button("browse", "Choose Download Folder", self.path.clone())))
             .child(frow(
                 &p,
                 "Label:",
@@ -523,7 +528,7 @@ impl Render for AddSheet {
                     .flex()
                     .gap(px(8.))
                     .child(div().w(px(170.)).child(dropdown(&p, "label", label_text, "label", options, selected, &self.focus)))
-                    .when(self.label.as_deref() == Some(""), |d| d.child(div().w(px(170.)).child(Input::new(&self.new_label)))),
+                    .when(self.label.as_deref() == Some(""), |d| d.child(div().w(px(170.)).child(Input::new(&self.new_label).h(CONTROL_H)))),
             ))
             .child(div().mt(px(8.)).child(legend(&p, "Torrent Contents")))
             .child(
@@ -536,7 +541,7 @@ impl Render for AddSheet {
                     .child(div().text_color(p.ink_dim).child(size_text)),
             )
             .child(contents)
-            .child(div().mt(px(8.)).child(frow(&p, "Info Hash:", div().font_family(MONO).text_size(px(10.)).child(self.info.info_hash.clone()))))
+            .child(div().mt(px(8.)).child(frow(&p, "Info Hash:", div().font_family(MONO).font_features(crate::theme::plain_mono()).text_size(TEXT_META).child(self.info.info_hash.clone()))))
             .when(!self.info.comment.is_empty(), |d| d.child(frow(&p, "Comment:", div().child(self.info.comment.clone()))))
             .child(frow(&p, "Trackers:", div().child(format!("{} announce URL(s)", self.info.announce.len()))))
             .child(
@@ -555,8 +560,8 @@ impl Render for AddSheet {
             .children(error_line(&p, &self.error))
             .child(
                 footer(&p, None)
-                    .child(Button::new("cancel").label("Cancel").on_click(|_, window, cx| window.close_dialog(cx)))
-                    .child(div().debug_selector(|| "add-ok".into()).child(Button::new("ok").label("OK").primary().disabled(self.busy).on_click(cx.listener(|this, _, window, cx| this.confirm(window, cx))))),
+                    .child(button("cancel").label("Cancel").on_click(|_, window, cx| window.close_dialog(cx)))
+                    .child(div().debug_selector(|| "add-ok".into()).child(button("ok").label("OK").primary().disabled(self.busy).on_click(cx.listener(|this, _, window, cx| this.confirm(window, cx))))),
             )
     }
 }
@@ -603,13 +608,13 @@ impl Render for UrlSheet {
             .flex_col()
             .child(title(&p, "Add Torrent from URL"))
             .child(div().mb(px(6.)).text_color(p.ink_dim).child("Enter a magnet link, an info hash, or an http(s) link to a .torrent file:"))
-            .child(Input::new(&self.url))
-            .child(div().mt(px(8.)).child(frow(&p, "Save In:", div().flex().gap(px(8.)).child(div().flex_1().child(Input::new(&self.path))).child(browse_button("browse", "Choose Download Folder", self.path.clone())))))
+            .child(Input::new(&self.url).h(CONTROL_H))
+            .child(div().mt(px(8.)).child(frow(&p, "Save In:", div().flex().gap(px(8.)).child(div().flex_1().child(Input::new(&self.path).h(CONTROL_H))).child(browse_button("browse", "Choose Download Folder", self.path.clone())))))
             .children(error_line(&p, &self.error))
             .child(
                 footer(&p, None)
-                    .child(Button::new("cancel").label("Cancel").on_click(|_, window, cx| window.close_dialog(cx)))
-                    .child(div().debug_selector(|| "url-ok".into()).child(Button::new("ok").label("Continue").primary().on_click(cx.listener(|this, _, window, cx| this.confirm(window, cx))))),
+                    .child(button("cancel").label("Cancel").on_click(|_, window, cx| window.close_dialog(cx)))
+                    .child(div().debug_selector(|| "url-ok".into()).child(button("ok").label("Continue").primary().on_click(cx.listener(|this, _, window, cx| this.confirm(window, cx))))),
             )
     }
 }
@@ -1189,7 +1194,7 @@ impl SearchSheet {
                 .flex()
                 .gap(px(8.))
                 .mb(px(6.))
-                .child(div().flex_none().w(px(18.)).h(px(18.)).rounded_full().bg(p.accent_soft).text_color(p.accent).text_size(px(11.)).flex().items_center().justify_center().child(n.to_string()))
+                .child(div().flex_none().w(px(18.)).h(px(18.)).rounded_full().bg(p.accent_soft).text_color(p.accent).text_size(TEXT_CAPTION).flex().items_center().justify_center().child(n.to_string()))
                 .child(div().flex_1().min_w_0().text_color(p.ink_dim).child(text.to_string()))
         };
         let guide = div()
@@ -1201,9 +1206,9 @@ impl SearchSheet {
             .border_color(p.line)
             .child(step("1", "Find the site's search API: an address that answers a search with JSON, not a web page. Sites usually describe it on an \u{201c}API\u{201d} page."))
             .child(step("2", "Copy the address of a search and put {query} where your search words are, e.g."))
-            .child(div().ml(px(26.)).mb(px(8.)).min_w_0().font_family(MONO).text_size(px(12.)).text_color(p.ink).child(SOURCE_EXAMPLE))
+            .child(div().ml(px(26.)).mb(px(8.)).min_w_0().font_family(MONO).font_features(crate::theme::plain_mono()).text_size(TEXT_META).text_color(p.ink).child(SOURCE_EXAMPLE))
             .child(step("3", "Click Test. ztorrent finds the results and their fields by itself. If the preview looks right, click Save."))
-            .child(div().ml(px(26.)).text_size(px(12.)).text_color(p.ink_faint).child("Got a definition someone shared? Paste it into the answer box below: it fills in everything."));
+            .child(div().ml(px(26.)).text_size(TEXT_META).text_color(p.ink_faint).child("Got a definition someone shared? Paste it into the answer box below: it fills in everything."));
         let ask_ai = div()
             .mb(px(14.))
             .p(px(12.))
@@ -1216,29 +1221,29 @@ impl SearchSheet {
                     .flex()
                     .items_center()
                     .gap(px(10.))
-                    .child(Button::new("ask-ai").label("Copy question for an AI").small().on_click(cx.listener(|this, _, _, cx| {
+                    .child(button("ask-ai").label("Copy question for an AI").small().h(CONTROL_SM_H).on_click(cx.listener(|this, _, _, cx| {
                         let Some(ed) = &mut this.editor else { return };
                         let prompt = CustomSource::assistant_prompt();
                         cx.write_to_clipboard(ClipboardItem::new_string(prompt));
                         ed.asked = true;
                         cx.notify();
                     })))
-                    .children(ed.asked.then(|| div().flex_1().min_w_0().text_size(px(12.)).text_color(p.ok).child("Copied. Now paste it into an AI assistant and type the site's name at the end."))),
+                    .children(ed.asked.then(|| div().flex_1().min_w_0().text_size(TEXT_META).text_color(p.ok).child("Copied. Now paste it into an AI assistant and type the site's name at the end."))),
             )
-            .child(div().mt(px(10.)).font_family(MONO).text_size(px(12.)).child(Textarea::new(&ed.answer).h(px(110.))))
+            .child(div().mt(px(10.)).font_family(MONO).font_features(crate::theme::plain_mono()).text_size(TEXT_META).child(Textarea::new(&ed.answer).h(px(110.))))
             .children(ed.filled.clone().map(|f| match f {
-                Ok(msg) => div().mt(px(6.)).min_w_0().text_size(px(12.)).text_color(p.ok).child(msg),
-                Err(err) => div().mt(px(6.)).min_w_0().text_size(px(12.)).text_color(p.err).child(err),
+                Ok(msg) => div().mt(px(6.)).min_w_0().text_size(TEXT_META).text_color(p.ok).child(msg),
+                Err(err) => div().mt(px(6.)).min_w_0().text_size(TEXT_META).text_color(p.err).child(err),
             }));
         let mut form = div()
             .child(legend(p, if ed.index.is_some() { "Edit source" } else { "Add a source" }))
-            .child(frow(p, "Name:", Input::new(&ed.name)))
+            .child(frow(p, "Name:", Input::new(&ed.name).h(CONTROL_H)))
             .children(self.namesake(&read(&ed.name, cx)).filter(|i| Some(*i) != ed.index).map(|_| {
                 let note = if ed.index.is_some() { "Another source already has this name." } else { "You already have a source with this name: saving replaces it." };
                 hint(p, note).text_color(p.warn)
             }))
-            .child(frow(p, "Address:", Input::new(&ed.url)))
-            .child(frow(p, "Test search:", div().flex().gap(px(8.)).child(div().flex_1().child(Input::new(&ed.test_query))).child(Button::new("test-source").label(if ed.testing { "Testing…" } else { "Test" }).small().disabled(ed.testing).on_click(cx.listener(|this, _, window, cx| this.test_source(window, cx))))));
+            .child(frow(p, "Address:", Input::new(&ed.url).h(CONTROL_H)))
+            .child(frow(p, "Test search:", div().flex().gap(px(8.)).child(div().flex_1().child(Input::new(&ed.test_query).h(CONTROL_H))).child(button("test-source").label(if ed.testing { "Testing…" } else { "Test" }).small().h(CONTROL_SM_H).disabled(ed.testing).on_click(cx.listener(|this, _, window, cx| this.test_source(window, cx))))));
         if let Some(err) = &ed.error {
             form = form.child(div().mb(px(10.)).text_color(p.err).child(err.clone()));
         }
@@ -1250,8 +1255,8 @@ impl SearchSheet {
                     .items_center()
                     .gap(px(10.))
                     .mb(px(6.))
-                    .child(div().flex_1().min_w_0().text_size(px(12.)).text_color(p.ok).child(format!("It works: {} results. The first few:", ed.preview.len())))
-                    .child(div().debug_selector(|| "save-tested".into()).child(Button::new("save-tested").label("Save this source").small().primary().on_click(cx.listener(|this, _, window, cx| this.save_source(window, cx))))),
+                    .child(div().flex_1().min_w_0().text_size(TEXT_META).text_color(p.ok).child(format!("It works: {} results. The first few:", ed.preview.len())))
+                    .child(div().debug_selector(|| "save-tested".into()).child(button("save-tested").label("Save this source").small().h(CONTROL_SM_H).primary().on_click(cx.listener(|this, _, window, cx| this.save_source(window, cx))))),
             );
             for hit in ed.preview.iter().take(5) {
                 let seeds = hit.seeders.map(|n| format!("{n} seeds")).unwrap_or_default();
@@ -1259,7 +1264,7 @@ impl SearchSheet {
                     div()
                         .flex()
                         .gap(px(10.))
-                        .text_size(px(12.))
+                        .text_size(TEXT_META)
                         .mb(px(3.))
                         .child(div().flex_1().min_w_0().line_clamp(2).child(hit.title.clone()))
                         .child(div().flex_none().text_color(p.ink_faint).font_features(tabular()).child(format!("{} {seeds}", fmt::bytes(hit.size as f64, true)))),
@@ -1300,11 +1305,11 @@ impl SearchSheet {
         if ed.advanced {
             form = form.child(hint(p, "Only if Test finds nothing or the wrong thing. Name a field as a dotted path, e.g. data.results or torrents.").ml(px(0.)).mt(px(0.)));
             for (key, label) in MAPPING_FIELDS {
-                form = form.child(frow(p, label, Input::new(&ed.mapping[key])));
+                form = form.child(frow(p, label, Input::new(&ed.mapping[key]).h(CONTROL_H)));
             }
-            form = form.child(frow(p, "Trackers for hashes:", Input::new(&ed.trackers)));
-            form = form.child(frow(p, "Backup addresses:", Input::new(&ed.mirrors)));
-            form = form.child(frow(p, "Lookup address:", Input::new(&ed.lookup)));
+            form = form.child(frow(p, "Trackers for hashes:", Input::new(&ed.trackers).h(CONTROL_H)));
+            form = form.child(frow(p, "Backup addresses:", Input::new(&ed.mirrors).h(CONTROL_H)));
+            form = form.child(frow(p, "Lookup address:", Input::new(&ed.lookup).h(CONTROL_H)));
         }
         form.child(
             div()
@@ -1312,11 +1317,11 @@ impl SearchSheet {
                 .items_center()
                 .justify_end()
                 .gap(px(8.))
-                .child(Button::new("cancel-source").label("Cancel").small().on_click(cx.listener(|this, _, _, cx| {
+                .child(button("cancel-source").label("Cancel").small().h(CONTROL_SM_H).on_click(cx.listener(|this, _, _, cx| {
                     this.editor = None;
                     cx.notify();
                 })))
-                .child(Button::new("save-source").label("Save").small().primary().on_click(cx.listener(|this, _, window, cx| this.save_source(window, cx)))),
+                .child(button("save-source").label("Save").small().h(CONTROL_SM_H).primary().on_click(cx.listener(|this, _, window, cx| this.save_source(window, cx)))),
         )
     }
 
@@ -1339,7 +1344,7 @@ impl SearchSheet {
                         let list = this.settings.search_sources_with(id, *on);
                         this.set("searchDisabledSources", list, cx);
                     })))
-                    .child(div().ml(px(26.)).text_size(px(12.)).text_color(p.ink_faint).child(about)),
+                    .child(div().ml(px(26.)).text_size(TEXT_META).text_color(p.ink_faint).child(about)),
             );
         }
         let mut yours = div().mb(px(8.)).rounded(RADIUS).border_1().border_color(p.line).bg(p.bg);
@@ -1366,14 +1371,14 @@ impl SearchSheet {
                         this.set_custom(list, cx);
                     })))
                     .child(div().max_w(px(260.)).min_w_0().truncate().child(src.name.clone()))
-                    .child(div().flex_1().min_w_0().truncate().text_size(px(12.)).text_color(p.ink_faint).child(host))
-                    .child(Button::new(("edit-src", i)).label("Edit").small().on_click(cx.listener(move |this, _, window, cx| this.open_editor(Some(i), window, cx))))
-                    .child(Button::new(("copy-src", i)).label("Copy").small().tooltip("Copy its definition, to share or keep").on_click(cx.listener(move |this, _, _, cx| {
+                    .child(div().flex_1().min_w_0().truncate().text_size(TEXT_META).text_color(p.ink_faint).child(host))
+                    .child(button(("edit-src", i)).label("Edit").small().h(CONTROL_SM_H).on_click(cx.listener(move |this, _, window, cx| this.open_editor(Some(i), window, cx))))
+                    .child(button(("copy-src", i)).label("Copy").small().h(CONTROL_SM_H).tooltip("Copy its definition, to share or keep").on_click(cx.listener(move |this, _, _, cx| {
                         cx.write_to_clipboard(ClipboardItem::new_string(shared.clone()));
                         this.flash = Some("Definition copied. Paste it into the answer box when adding a source.".into());
                         cx.notify();
                     })))
-                    .child(Button::new(("remove-src", i)).label("Remove").small().on_click(cx.listener(move |this, _, _, cx| {
+                    .child(button(("remove-src", i)).label("Remove").small().h(CONTROL_SM_H).on_click(cx.listener(move |this, _, _, cx| {
                         let mut list = this.settings.search_custom_sources.clone();
                         if i < list.len() {
                             let gone = list.remove(i);
@@ -1408,7 +1413,7 @@ impl SearchSheet {
                     .child(if has_any { "+ Add another source" } else { "+ Add a source" })
                     .on_click(cx.listener(|this, _, window, cx| this.open_editor(None, window, cx)))
             }))
-            .children(self.flash.clone().map(|f| div().text_size(px(12.)).text_color(p.ink_dim).child(f)))
+            .children(self.flash.clone().map(|f| div().text_size(TEXT_META).text_color(p.ink_dim).child(f)))
             .child(div().mt(px(20.)).child(legend(p, "Results")))
             .child(frow(p, "Results per source:", div().w(px(100.)).child(dropdown(p, "max", max.to_string(), "max", counts, max.to_string(), &self.focus))))
             .child(div().child(Checkbox::new("hide-dead").label("Hide torrents with no seeders").checked(s.search_hide_dead).on_click(cx.listener(|this, on: &bool, _, cx| {
@@ -1418,8 +1423,8 @@ impl SearchSheet {
             panel = panel
                 .child(div().mt(px(20.)).child(legend(p, "Your own search server")))
                 .child(frow(p, "Server:", div().w(px(140.)).child(dropdown(p, "kind", if kind == "prowlarr" { "Prowlarr" } else { "Jackett" }.into(), "kind", kinds, kind.into(), &self.focus))))
-                .child(frow(p, "Address:", Input::new(&self.indexer_url)))
-                .child(frow(p, "API key:", Input::new(&self.indexer_key)))
+                .child(frow(p, "Address:", Input::new(&self.indexer_url).h(CONTROL_H)))
+                .child(frow(p, "API key:", Input::new(&self.indexer_key).h(CONTROL_H)))
                 .child(hint(p, "Searches every site you have set up in your own Jackett or Prowlarr. The key is on its dashboard or under Settings → General."));
         }
         panel
@@ -1444,7 +1449,7 @@ impl SearchSheet {
             .gap(px(6.))
             .h(px(20.))
             .mt(px(6.))
-            .text_size(px(12.))
+            .text_size(TEXT_META)
             .child(div().min_w_0().truncate().text_color(p.ink_faint).child(what))
             .child(div().flex_none().text_color(p.ink_faint).child("·"))
             .child(
@@ -1480,8 +1485,8 @@ impl SearchSheet {
                     div()
                         .flex()
                         .gap(px(8.))
-                        .child(Button::new("welcome-add").label("Add a source…").small().primary().on_click(cx.listener(|this, _, window, cx| this.open_editor(None, window, cx))))
-                        .child(Button::new("welcome-settings").label("Search settings").small().on_click(cx.listener(|this, _, _, cx| {
+                        .child(button("welcome-add").label("Add a source…").small().h(CONTROL_SM_H).primary().on_click(cx.listener(|this, _, window, cx| this.open_editor(None, window, cx))))
+                        .child(button("welcome-settings").label("Search settings").small().h(CONTROL_SM_H).on_click(cx.listener(|this, _, _, cx| {
                             this.show_settings = true;
                             cx.notify();
                         }))),
@@ -1517,10 +1522,10 @@ fn filter_chip(p: &Palette, field: &'static str, name: &str, value: Option<Strin
         .flex_none()
         .items_center()
         .gap(px(6.))
-        .h(px(24.))
+        .h(CHIP_H)
         .px(px(10.))
         .rounded_full()
-        .text_size(px(12.));
+        .text_size(TEXT_META);
     let chip = match value {
         Some(v) => {
             let (fg, hover) = (p.accent, p.hover);
@@ -1648,7 +1653,7 @@ impl SearchSheet {
                             .flex()
                             .items_center()
                             .gap(px(10.))
-                            .text_size(px(12.))
+                            .text_size(TEXT_META)
                             .text_color(p.ink_dim)
                             .child(div().flex().flex_none().items_center().gap(px(5.)).child(div().size(px(7.)).rounded_full().bg(health)).child(swarm))
                             .when(r.size > 0, |d| d.child(div().flex_none().font_features(tabular()).child(fmt::bytes(r.size as f64, true))))
@@ -1657,7 +1662,7 @@ impl SearchSheet {
                             .children(quality(&r.title).map(|q| pill(q.to_string()))),
                     ),
             )
-            .child(Button::new(("add", i)).label("Add…").small().on_click(cx.listener(move |this, _, window, cx| {
+            .child(button(("add", i)).label("Add…").small().h(CONTROL_SM_H).on_click(cx.listener(move |this, _, window, cx| {
                 cx.stop_propagation();
                 let link = this.results[i].link.clone();
                 window.close_dialog(cx);
@@ -1699,11 +1704,11 @@ impl SearchSheet {
                 .border_1()
                 .border_color(p.line)
                 .child(div().flex_1().min_w_0().truncate().child(what))
-                .child(Button::new("clear-selection").label("Clear").small().ghost().on_click(cx.listener(|this, _, _, cx| {
+                .child(button("clear-selection").label("Clear").small().h(CONTROL_SM_H).ghost().on_click(cx.listener(|this, _, _, cx| {
                     this.selected.clear();
                     cx.notify();
                 })))
-                .child(Button::new("add-selected").label(label).small().primary().loading(self.adding).on_click(cx.listener(|this, _, window, cx| this.add_selected(window, cx)))),
+                .child(button("add-selected").label(label).small().h(CONTROL_SM_H).primary().loading(self.adding).on_click(cx.listener(|this, _, window, cx| this.add_selected(window, cx)))),
         )
     }
 }
@@ -1755,7 +1760,7 @@ impl Render for SearchSheet {
                 .mt(px(12.))
                 .mb(px(6.))
                 .px(px(8.))
-                .text_size(px(12.))
+                .text_size(TEXT_META)
                 .child(div().flex_none().mr(px(4.)).child(Checkbox::new("tick-all").checked(all_ticked).on_click(cx.listener(move |this, on: &bool, _, cx| {
                     for link in &shown_links {
                         if *on {
@@ -1814,7 +1819,7 @@ impl Render for SearchSheet {
                     .flex()
                     .items_center()
                     .gap(px(8.))
-                    .child(div().flex_1().child(Input::new(&self.query).prefix(icon("search", 14., p.ink_faint))))
+                    .child(div().flex_1().child(Input::new(&self.query).h(CONTROL_H).prefix(icon("search", 14., p.ink_faint))))
                     .child(div().w(px(120.)).child(dropdown(&p, "category", category_label, "category", categories, category, &self.focus)))
                     .child(
                         div()
@@ -1824,7 +1829,7 @@ impl Render for SearchSheet {
                             .items_center()
                             .justify_center()
                             .gap(px(6.))
-                            .h(px(30.))
+                            .h(CONTROL_H)
                             .px(px(10.))
                             .rounded(RADIUS)
                             .border_1()
@@ -1843,7 +1848,7 @@ impl Render for SearchSheet {
                                 cx.notify();
                             })),
                     )
-                    .child(div().debug_selector(|| "search-go".into()).child(Button::new("go").label("Search").primary().disabled(self.busy).on_click(cx.listener(|this, _, window, cx| this.run(window, cx))))),
+                    .child(div().debug_selector(|| "search-go".into()).child(button("go").label("Search").primary().disabled(self.busy).on_click(cx.listener(|this, _, window, cx| this.run(window, cx))))),
             )
             .child(self.render_searching(&p, cx))
             .child(div().id("search-settings-panel").max_h(px(panel_h)).overflow_y_scroll().children(settings))
@@ -1862,8 +1867,8 @@ impl Render for SearchSheet {
                     .pt(px(12.))
                     .border_t_1()
                     .border_color(p.line)
-                    .child(div().flex_1().min_w_0().text_size(px(11.)).text_color(p.ink_faint).child(RESPONSIBILITY))
-                    .child(Button::new("close").label("Close").on_click(|_, window, cx| window.close_dialog(cx))),
+                    .child(div().flex_1().min_w_0().text_size(TEXT_CAPTION).text_color(p.ink_faint).child(RESPONSIBILITY))
+                    .child(button("close").label("Close").on_click(|_, window, cx| window.close_dialog(cx))),
             )
     }
 }
@@ -2028,8 +2033,8 @@ impl Render for CreateSheet {
                     .flex()
                     .gap(px(8.))
                     .mb(px(16.))
-                    .child(div().flex_1().child(Input::new(&self.src)))
-                    .child(Button::new("pick-file").label("Add File…").small().on_click(move |_, window, cx: &mut App| {
+                    .child(div().flex_1().child(Input::new(&self.src).h(CONTROL_H)))
+                    .child(button("pick-file").label("Add File…").small().h(CONTROL_SM_H).on_click(move |_, window, cx: &mut App| {
                         let start = read(&src, cx);
                         let src = src.clone();
                         pick(window, cx, Pick::File, panel("Choose a File to Share", &start), move |paths, window, cx| {
@@ -2037,16 +2042,16 @@ impl Render for CreateSheet {
                             src.update(cx, |s, cx| s.set_value(path, window, cx));
                         });
                     }))
-                    .child(Button::new("pick-dir").label("Add Folder…").small().on_click(move |_, window, cx: &mut App| {
+                    .child(button("pick-dir").label("Add Folder…").small().h(CONTROL_SM_H).on_click(move |_, window, cx: &mut App| {
                         browse_into(window, cx, "Choose a Folder to Share", src2.clone())
                     })),
             )
             .child(legend(&p, "Torrent Properties"))
             .child(div().mb(px(4.)).text_color(p.ink_dim).child("Trackers (one per line, blank line separates tiers):"))
-            .child(div().mb(px(8.)).font_family(MONO).child(Textarea::new(&self.trackers).h(px(96.))))
+            .child(div().mb(px(8.)).font_family(MONO).font_features(crate::theme::plain_mono()).child(Textarea::new(&self.trackers).h(px(96.))))
             .child(div().mb(px(4.)).text_color(p.ink_dim).child("Web seeds (optional, one URL per line):"))
-            .child(div().mb(px(8.)).font_family(MONO).child(Textarea::new(&self.web_seeds).h(px(52.))))
-            .child(frow(&p, "Comment:", Input::new(&self.comment)))
+            .child(div().mb(px(8.)).font_family(MONO).font_features(crate::theme::plain_mono()).child(Textarea::new(&self.web_seeds).h(px(52.))))
+            .child(frow(&p, "Comment:", Input::new(&self.comment).h(CONTROL_H)))
             .child(frow(&p, "Piece size:", div().w(px(140.)).child(dropdown(&p, "piece", piece_label, "piece", options, self.piece.to_string(), &self.focus))))
             .child(
                 div()
@@ -2065,8 +2070,8 @@ impl Render for CreateSheet {
             .children(self.status.clone().map(|s| div().mt(px(6.)).text_color(p.ink_dim).child(s)))
             .child(
                 footer(&p, None)
-                    .child(Button::new("cancel").label("Cancel").on_click(|_, window, cx| window.close_dialog(cx)))
-                    .child(div().debug_selector(|| "create-ok".into()).child(Button::new("ok").label("Create and Save As…").primary().disabled(self.busy).on_click(cx.listener(|this, _, window, cx| this.confirm(window, cx))))),
+                    .child(button("cancel").label("Cancel").on_click(|_, window, cx| window.close_dialog(cx)))
+                    .child(div().debug_selector(|| "create-ok".into()).child(button("ok").label("Create and Save As…").primary().disabled(self.busy).on_click(cx.listener(|this, _, window, cx| this.confirm(window, cx))))),
             )
     }
 }
@@ -2231,7 +2236,7 @@ impl PrefsSheet {
     }
 
     fn number(&self, p: &Palette, key: &'static str, label: &str, suffix: &str) -> impl IntoElement {
-        frow(p, label, div().flex().items_center().gap(px(8.)).child(div().w(px(92.)).debug_selector(move || format!("field-{key}")).child(Input::new(&self.inputs[key]))).child(div().text_color(p.ink_dim).child(suffix.to_string())))
+        frow(p, label, div().flex().items_center().gap(px(8.)).child(div().w(px(92.)).debug_selector(move || format!("field-{key}")).child(Input::new(&self.inputs[key]).h(CONTROL_H))).child(div().text_color(p.ink_dim).child(suffix.to_string())))
     }
 }
 
@@ -2248,7 +2253,7 @@ impl Render for PrefsSheet {
                     .flex()
                     .items_center()
                     .gap(px(8.))
-                    .h(px(30.))
+                    .h(CONTROL_H)
                     .px(px(10.))
                     .rounded(RADIUS)
                     .when(active, |d| d.bg(p.sel_quiet).font_weight(FontWeight::MEDIUM))
@@ -2272,19 +2277,19 @@ impl Render for PrefsSheet {
                 .child(self.check(cx, "askWhereToSave", "Show the Add Torrent dialog", false))
                 .child(self.check(cx, "sequentialDownload", "Download pieces in order by default", false))
                 .child(self.check(cx, "partFiles", "Append .part to incomplete files", false))
-                .child(div().mt(px(-6.)).mb(px(14.)).text_size(px(12.)).text_color(p.ink_faint).child("Renamed once the torrent finishes, so unfinished downloads are never mistaken for complete ones."))
+                .child(div().mt(px(-6.)).mb(px(14.)).text_size(TEXT_META).text_color(p.ink_faint).child("Renamed once the torrent finishes, so unfinished downloads are never mistaken for complete ones."))
                 .child(legend(&p, "Notifications"))
                 .child(self.check(cx, "notifyOnComplete", "Show a notification when a download finishes", false))
                 .child(self.check(cx, "confirmOnDelete", "Confirm before removing a torrent", false))
                 .child(self.check(cx, "showSpeedInDock", "Show download progress on the Dock icon", false))
                 .child(legend(&p, "Updates"))
                 .child(self.check(cx, "autoUpdate", "Check for new versions automatically", false))
-                .child(div().mt(px(-6.)).text_size(px(12.)).text_color(p.ink_faint).child("Downloads the new build in the background and offers a restart when it is ready. Nothing is installed until you say so."))
+                .child(div().mt(px(-6.)).text_size(TEXT_META).text_color(p.ink_faint).child("Downloads the new build in the background and offers a restart when it is ready. Nothing is installed until you say so."))
                 .into_any_element(),
             Page::Dirs => div()
                 .child(legend(&p, "Location of downloaded files"))
                 .child(div().mb(px(6.)).text_color(p.ink_dim).child("Put new downloads in:"))
-                .child(div().flex().gap(px(8.)).child(div().flex_1().child(Input::new(&self.inputs["downloadPath"]))).child(browse_button("browse-dl", "Choose Download Folder", self.inputs["downloadPath"].clone())))
+                .child(div().flex().gap(px(8.)).child(div().flex_1().child(Input::new(&self.inputs["downloadPath"]).h(CONTROL_H))).child(browse_button("browse-dl", "Choose Download Folder", self.inputs["downloadPath"].clone())))
                 .into_any_element(),
             Page::Connection => {
                 let mut ifaces = vec![(String::new(), "Any (follow the routing table)".to_string())];
@@ -2307,10 +2312,10 @@ impl Render for PrefsSheet {
                     .child(self.check(cx, "enableUPnP", "Map the port with UPnP / NAT-PMP", off.upnp))
                     .child(div().mt(px(8.)).child(legend(&p, "Proxy")))
                     .child(self.check(cx, "proxyEnabled", "Route traffic through a SOCKS5 proxy", false))
-                    .child(frow(&p, "Proxy host:", Input::new(&self.inputs["proxyHost"])))
+                    .child(frow(&p, "Proxy host:", Input::new(&self.inputs["proxyHost"]).h(CONTROL_H)))
                     .child(self.number(&p, "proxyPort", "Proxy port:", ""))
-                    .child(frow(&p, "Username:", Input::new(&self.inputs["proxyUsername"])))
-                    .child(frow(&p, "Password:", Input::new(&self.inputs["proxyPassword"])))
+                    .child(frow(&p, "Username:", Input::new(&self.inputs["proxyUsername"]).h(CONTROL_H)))
+                    .child(frow(&p, "Password:", Input::new(&self.inputs["proxyPassword"]).h(CONTROL_H)))
                     .child(hint(&p, "Covers tracker announces, web seeds and outgoing peer connections. Anything that cannot be routed is switched off rather than sent around the proxy: DHT, local discovery, µTP, port mapping and udp:// trackers all stop while this is on. Takes effect after a restart."))
                     .child(div().mt(px(8.)).child(legend(&p, "Network interface")))
                     .child(frow(&p, "Send traffic from:", dropdown(&p, "bind", bind_label, "bindInterface", ifaces, bind.clone(), &self.focus)))
@@ -2389,8 +2394,8 @@ impl Render for PrefsSheet {
             )
             .child(
                 footer(&p, None)
-                    .child(Button::new("cancel").label("Cancel").on_click(|_, window, cx| window.close_dialog(cx)))
-                    .child(div().debug_selector(|| "prefs-apply".into()).child(Button::new("ok").label("Apply").primary().on_click(cx.listener(|this, _, window, cx| this.apply(window, cx))))),
+                    .child(button("cancel").label("Cancel").on_click(|_, window, cx| window.close_dialog(cx)))
+                    .child(div().debug_selector(|| "prefs-apply".into()).child(button("ok").label("Apply").primary().on_click(cx.listener(|this, _, window, cx| this.apply(window, cx))))),
             )
     }
 }
@@ -2439,7 +2444,7 @@ impl Render for PropertiesSheet {
                     .flex()
                     .gap(px(12.))
                     .child(div().w(px(130.)).flex_none().text_color(p.ink_dim).child(k))
-                    .child(div().flex_1().min_w_0().font_family(MONO).text_size(px(12.)).overflow_hidden().child(v)),
+                    .child(div().flex_1().min_w_0().font_family(MONO).font_features(crate::theme::plain_mono()).text_size(TEXT_META).overflow_hidden().child(v)),
             );
         }
         div()
@@ -2447,7 +2452,7 @@ impl Render for PropertiesSheet {
             .flex_col()
             .child(title(&p, format!("Properties — {}", r.name)))
             .child(grid)
-            .child(footer(&p, None).child(div().debug_selector(|| "close".into()).child(Button::new("close").label("Close").on_click(|_, window, cx| window.close_dialog(cx)))))
+            .child(footer(&p, None).child(div().debug_selector(|| "close".into()).child(button("close").label("Close").on_click(|_, window, cx| window.close_dialog(cx)))))
     }
 }
 
@@ -2503,14 +2508,14 @@ impl Render for LabelStyleSheet {
             .child(symbols)
             .child(
                 footer(&p, None)
-                    .child(Button::new("cancel").label("Cancel").on_click(|_, window, cx| window.close_dialog(cx)))
-                    .child(div().debug_selector(|| "label-ok".into()).child(Button::new("ok").label("OK").primary().on_click(cx.listener(|this, _, window, cx| this.ok(window, cx))))),
+                    .child(button("cancel").label("Cancel").on_click(|_, window, cx| window.close_dialog(cx)))
+                    .child(div().debug_selector(|| "label-ok".into()).child(button("ok").label("OK").primary().on_click(cx.listener(|this, _, window, cx| this.ok(window, cx))))),
             )
     }
 }
 
 fn small_heading(p: &Palette, text: &str) -> Div {
-    div().mb(px(8.)).text_size(px(11.)).font_weight(FontWeight::SEMIBOLD).text_color(p.ink_faint).child(text.to_string())
+    div().mb(px(8.)).text_size(TEXT_CAPTION).font_weight(FontWeight::SEMIBOLD).text_color(p.ink_faint).child(text.to_string())
 }
 
 /// The label hues as a row of swatches, `selected` ringed; a click hands the
@@ -2624,15 +2629,15 @@ impl Render for NewLabelSheet {
             .flex_col()
             .child(title(&p, "New Label"))
             .child(small_heading(&p, "NAME"))
-            .child(div().mb(px(18.)).child(Input::new(&self.input).prefix(icon(&self.symbol, 16., p.tag(&self.color)))))
+            .child(div().mb(px(18.)).child(Input::new(&self.input).h(CONTROL_H).prefix(icon(&self.symbol, 16., p.tag(&self.color)))))
             .child(small_heading(&p, "COLOR"))
             .child(colors)
             .child(small_heading(&p, "SYMBOL"))
             .child(symbols)
             .child(
                 footer(&p, None)
-                    .child(Button::new("cancel").label("Cancel").on_click(|_, window, cx| window.close_dialog(cx)))
-                    .child(div().debug_selector(|| "new-label-ok".into()).child(Button::new("ok").label("OK").primary().on_click(cx.listener(|this, _, window, cx| this.submit(window, cx))))),
+                    .child(button("cancel").label("Cancel").on_click(|_, window, cx| window.close_dialog(cx)))
+                    .child(div().debug_selector(|| "new-label-ok".into()).child(button("ok").label("OK").primary().on_click(cx.listener(|this, _, window, cx| this.submit(window, cx))))),
             )
     }
 }

@@ -81,6 +81,8 @@ pub fn apply_theme(settings: &Settings, cx: &mut App) {
         c.name = if dark { "ztorrent Graphite" } else { "ztorrent Classic" }.into();
         c.mode = if dark { ThemeMode::Dark } else { ThemeMode::Light };
         c.font_size = Some(13.0);
+        c.font_family = Some(theme::SANS.into());
+        c.mono_font_family = Some(theme::MONO.into());
         c.radius = Some(6);
         c.radius_lg = Some(10);
         let k = &mut c.colors;
@@ -210,6 +212,9 @@ pub fn run(options: RunOptions) {
         {
             let noto: &'static [u8] = include_bytes!("../assets/fonts/NotoSans-Regular.ttf");
             let _ = cx.text_system().add_fonts(vec![std::borrow::Cow::Borrowed(noto)]);
+        }
+        if let Err(err) = cx.text_system().add_fonts(theme::fonts()) {
+            eprintln!("[ztorrent] could not load the bundled fonts: {err}");
         }
         gpui_component::init(cx);
         cx.set_global(bridge::Bridge(commands.clone()));

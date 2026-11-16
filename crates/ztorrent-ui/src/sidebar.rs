@@ -1,6 +1,6 @@
 use crate::actions::CustomizeLabel;
 use crate::icons::bold_icon;
-use crate::theme::{Palette, RADIUS, Theme};
+use crate::theme::{FONT_SIZE, NAV_ROW_H, Palette, RADIUS, TEXT_META, Theme};
 use crate::workspace::{DraggedTorrents, Workspace};
 use gpui::prelude::*;
 use gpui::*;
@@ -30,11 +30,11 @@ impl Workspace {
             .gap(px(1.))
             .child(
                 div()
-                    .h(px(26.))
+                    .h(NAV_ROW_H)
                     .px(px(10.))
                     .flex()
                     .items_center()
-                    .text_size(px(12.))
+                    .text_size(TEXT_META)
                     .font_weight(FontWeight::SEMIBOLD)
                     .text_color(p.ink_faint)
                     .child("LABELS"),
@@ -52,7 +52,7 @@ impl Workspace {
                 .flex()
                 .items_center()
                 .gap(px(8.))
-                .h(px(30.))
+                .h(NAV_ROW_H)
                 .pl(px(16.))
                 .pr(px(10.))
                 .rounded(RADIUS)
@@ -80,7 +80,7 @@ impl Workspace {
             .py(px(10.))
             .px(px(8.))
             .bg(p.sidebar)
-            .text_size(px(14.))
+            .text_size(FONT_SIZE)
             .child(torrents)
             .child(labels)
     }
@@ -107,7 +107,7 @@ impl Workspace {
             .flex()
             .items_center()
             .gap(px(8.))
-            .h(px(30.))
+            .h(NAV_ROW_H)
             .pl(px(if child { 16. } else { 10. }))
             .pr(px(10.))
             .rounded(RADIUS)
@@ -117,7 +117,7 @@ impl Workspace {
             .when(!selected, |d| d.hover(|s| s.bg(p2.hover)))
             .child(bold_icon(ic, 18., color))
             .child(div().flex_1().min_w_0().truncate().child(label.to_string()))
-            .child(div().text_size(px(13.)).text_color(p.ink_faint).font_features(crate::theme::tabular()).child(format!("({count})")))
+            .child(div().text_size(TEXT_META).text_color(p.ink_faint).font_features(crate::theme::tabular()).child(format!("({count})")))
             .on_click(cx.listener({
                 let cat = cat.clone();
                 move |this, _, _, cx| {
